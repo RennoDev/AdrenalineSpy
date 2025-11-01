@@ -1,0 +1,43 @@
+{
+  "Navegacao": {
+    "UrlBase": "https://www.adrenaline.com.br",
+    "TimeoutSegundos": 30,
+    "HeadlessMode": false,
+    "NavegadorPadrao": "chromium"
+  },
+  "Categorias": {
+    "Tecnologia": "/tecnologia/",
+    "Games": "/games/",
+    "Hardware": "/hardware/"
+  },
+  "Scraping": {
+    "IntervaloEntreRequests": 2000,
+    "MaximoTentativas": 3,
+    "DelayAposErro": 5000
+  },
+  "Database": {
+    "Provider": "MySQL",
+    "Host": "localhost",
+    "Port": 3306,
+    "NomeBanco": "adrenalinespy_db",
+    "Usuario": "seu_usuario_aqui",
+    "Senha": "sua_senha_aqui",
+    "ConnectionTimeout": 30
+  },
+  "Logging": {
+    "DiretorioLogs": "logs",
+    "NivelMinimo": "Information",
+    "ArquivoSucesso": "sucesso/log-{Date}.txt",
+    "ArquivoFalha": "falha/log-{Date}.txt"
+  },
+  "Agendamento": {
+    "HabilitarScheduler": true,
+    "IntervaloMinutos": 60,
+    "ExecutarAoIniciar": false
+  },
+  "Exportacao": {
+    "HabilitarExportacao": true,
+    "FormatoPadrao": "Excel",
+    "DiretorioSaida": "exports"
+  }
+}
