@@ -2,13 +2,36 @@
 
 ## 📋 Índice
 
+### 🎓 Primeiros Passos
 1. [Preparando o Git Local](#preparando-o-git-local)
 2. [Conectando ao GitHub](#conectando-ao-github)
-3. [Conectando ao GitLab](#conectando-ao-gitlab)
-4. [Fluxo de Trabalho Comum](#fluxo-de-trabalho-comum)
+3. [Conectando ao GitLab](#conectando-ao-gitlab) *(opcional)*
+
+### 💼 Workflow Profissional
+4. [Workflow Corporativo (Branches + Pull Requests)](#workflow-corporativo-branches--pull-requests) ⭐ **Recomendado**
 5. [Branches e Estratégias](#branches-e-estratégias)
 6. [Boas Práticas](#boas-práticas)
-7. [Troubleshooting](#troubleshooting)
+
+### 📚 Referência e Ajuda
+7. [Fluxo de Trabalho Comum](#fluxo-de-trabalho-comum) *(comandos do dia a dia)*
+8. [Workflows Úteis](#workflows-úteis) *(exemplos práticos)*
+9. [Troubleshooting](#troubleshooting) *(resolver problemas)*
+10. [Recursos Adicionais](#recursos-adicionais) *(links e ferramentas)*
+
+---
+
+## 🚀 Guia de Uso
+
+### Para Iniciantes (Ordem Recomendada):
+
+1. **📖 [Preparando o Git Local](#preparando-o-git-local)** - Instalar e configurar Git (5 min)
+2. **🐙 [Conectando ao GitHub](#conectando-ao-github)** - Criar repositório e fazer primeiro push (10 min)
+3. **🏢 [Workflow Corporativo](#workflow-corporativo-branches--pull-requests)** - ⭐ **Comece aqui com branches + PRs!** (15 min)
+4. **✅ [Boas Práticas](#boas-práticas)** - Mensagens de commit e organização (5 min)
+
+### Para Consulta Rápida:
+- **[Fluxo de Trabalho Comum](#fluxo-de-trabalho-comum)** - Comandos do dia a dia
+- **[Troubleshooting](#troubleshooting)** - Resolver problemas comuns
 
 ---
 
@@ -430,6 +453,294 @@ main (produção)
 │   ├── feature/email-notification
 │   └── feature/database-integration
 └── hotfix/critical-bug
+```
+
+---
+
+## 🏢 Workflow Corporativo (Branches + Pull Requests)
+
+### Por que usar mesmo trabalhando sozinho?
+
+✅ **Portfólio profissional** - Demonstra conhecimento de workflows empresariais  
+✅ **Histórico organizado** - Cada PR documenta mudanças específicas  
+✅ **Code review** - Força você a revisar seu próprio código antes do merge  
+✅ **Proteção da main** - Branch principal sempre estável  
+✅ **Preparação** - Quando entrar em equipe, já sabe o processo  
+
+### Configurar Proteção da Branch Main
+
+**No GitHub:**
+
+1. Vá em: **Settings** → **Branches** → **Add branch protection rule**
+2. Em "Branch name pattern": `main`
+3. Configure:
+   - ✅ **Require a pull request before merging**
+   - ✅ **Require approvals** (deixe em 0 ou 1 - você mesmo aprovará)
+   - ⚠️ **NÃO marque** "Require review from Code Owners" (você não tem equipe)
+   - ✅ **Require status checks to pass** (opcional, para CI/CD futuro)
+4. Clique em **Create**
+
+Agora **não é mais possível** fazer `git push` direto na `main`! 🎉
+
+### Workflow Completo: Do Código ao Merge
+
+#### **Passo 1: Setup Inicial (uma vez só)**
+
+```bash
+# 1. Proteger a main (feito no GitHub, explicado acima)
+
+# 2. Adicionar dependências na main (exceção - é setup base)
+git checkout main
+dotnet add package Microsoft.Playwright
+dotnet add package Serilog
+# ... outros pacotes ...
+
+git add AdrenalineSpy.csproj
+git commit -m "chore: adiciona dependências base do projeto"
+git push origin main
+```
+
+#### **Passo 2: Criar Branch para Nova Funcionalidade**
+
+```bash
+# 1. Sempre comece da main atualizada
+git checkout main
+git pull origin main
+
+# 2. Criar branch para a funcionalidade
+git checkout -b feature/logging_task
+
+# Nomenclatura recomendada:
+# feature/nome_funcionalidade  - Nova funcionalidade
+# fix/nome_bug                - Correção de bug
+# chore/nome_tarefa          - Manutenção, configuração
+# docs/nome_doc              - Documentação
+# refactor/nome_refactor     - Refatoração de código
+```
+
+#### **Passo 3: Desenvolver e Commitar**
+
+```bash
+# 1. Fazer mudanças no código
+# Exemplo: Implementar LoggingTask.cs
+
+# 2. Ver o que mudou
+git status
+git diff
+
+# 3. Adicionar arquivos
+git add Workflow/Tasks/LoggingTask.cs
+
+# 4. Commitar com mensagem descritiva
+git commit -m "feat(logging): implementa LoggingTask helper
+
+- Adiciona método RegistrarErro com contexto
+- Adiciona método RegistrarAviso
+- Adiciona método RegistrarInfo com timestamp
+- Integra com Serilog para enriquecimento de logs"
+
+# 5. Continuar desenvolvendo...
+# Fazer mais commits conforme necessário
+git add .
+git commit -m "feat(logging): adiciona tratamento de InnerException"
+
+# 6. Push da branch para o GitHub
+git push -u origin feature/logging_task
+# Próximos pushes: apenas git push
+```
+
+#### **Passo 4: Abrir Pull Request no GitHub**
+
+**No navegador:**
+
+1. Vá até `https://github.com/RennoDev/AdrenalineSpy`
+2. Aparecerá banner: **"Compare & pull request"** (clique nele)
+   - OU: Vá em **Pull requests** → **New pull request**
+3. Preencha:
+
+**Título:**
+```
+feat(logging): implementa LoggingTask helper
+```
+
+**Descrição (template):**
+```markdown
+## 📋 Descrição
+
+Implementa o LoggingTask como helper centralizado para logging em toda a aplicação.
+
+## ✨ O que foi feito
+
+- ✅ Método `RegistrarErro(Exception, string)` para exceptions com contexto
+- ✅ Método `RegistrarAviso(string, string)` para warnings
+- ✅ Método `RegistrarInfo(string)` com timestamp automático
+- ✅ Integração com Serilog
+- ✅ Suporte para InnerException
+
+## 🧪 Como testar
+
+```bash
+dotnet build
+# Testar manualmente em Program.cs:
+# LoggingTask.RegistrarInfo("Teste de logging");
+```
+
+## 📸 Screenshots (opcional)
+
+(Se tiver interface visual)
+
+## 📝 Checklist
+
+- [x] Código implementado
+- [x] Build passa sem erros
+- [x] Seguiu convenções do projeto
+- [x] Documentação atualizada (se necessário)
+```
+
+4. **Assignees**: Atribua a você mesmo
+5. **Labels**: Adicione `enhancement` ou `feature`
+6. Clique em **Create pull request**
+
+#### **Passo 5: Code Review (você mesmo)**
+
+**Revise seu próprio código:**
+
+1. Na aba **Files changed**, veja todas as mudanças
+2. Pergunte-se:
+   - ✅ O código está legível?
+   - ✅ Segue as convenções do projeto?
+   - ✅ Tem comentários onde necessário?
+   - ✅ Não tem código comentado/debug?
+   - ✅ Não tem TODOs pendentes críticos?
+3. Adicione comentários em linhas específicas se quiser anotar algo
+4. Se encontrar problemas:
+   ```bash
+   # Fazer correções localmente
+   git add .
+   git commit -m "fix: corrige problema X"
+   git push
+   # O PR é atualizado automaticamente!
+   ```
+
+#### **Passo 6: Aprovar e Fazer Merge**
+
+1. Na página do PR, clique em **Merge pull request**
+2. Escolha o tipo de merge:
+   - **Merge commit** (recomendado) - Mantém todos os commits
+   - **Squash and merge** - Junta tudo em 1 commit
+   - **Rebase and merge** - Lineariza o histórico
+3. Clique em **Confirm merge**
+4. **Delete branch** (aparece automaticamente) - Clique para limpar
+
+#### **Passo 7: Atualizar Main Local e Limpar**
+
+```bash
+# 1. Voltar para a main
+git checkout main
+
+# 2. Atualizar com as mudanças do GitHub
+git pull origin main
+
+# 3. Deletar branch local (já foi mergeada)
+git branch -d feature/logging_task
+
+# 4. Limpar branches remotas deletadas
+git fetch --prune
+
+# 5. Ver branches restantes
+git branch -a
+```
+
+### Exemplo Prático: Implementar todas as Tasks
+
+```bash
+# === Task 1: LoggingTask ===
+git checkout main
+git pull
+git checkout -b feature/logging_task
+# ... desenvolver ...
+git commit -m "feat(logging): implementa LoggingTask helper"
+git push -u origin feature/logging_task
+# Abrir PR, aprovar, merge, deletar branch
+
+# === Task 2: Config ===
+git checkout main
+git pull
+git checkout -b feature/config_class
+# ... desenvolver ...
+git commit -m "feat(config): implementa carregamento de AutomationSettings.json"
+git push -u origin feature/config_class
+# Abrir PR, aprovar, merge, deletar branch
+
+# === Task 3: NavigationTask ===
+git checkout main
+git pull
+git checkout -b feature/navigation_task
+# ... desenvolver ...
+git commit -m "feat(navigation): implementa navegação no Adrenaline com Playwright"
+git push -u origin feature/navigation_task
+# Abrir PR, aprovar, merge, deletar branch
+
+# E assim por diante...
+```
+
+### Template de Mensagem de PR
+
+Salve isso para copiar/colar:
+
+````markdown
+## 📋 Descrição
+
+[Descreva brevemente o que foi implementado/corrigido]
+
+## ✨ O que foi feito
+
+- ✅ [Item 1]
+- ✅ [Item 2]
+- ✅ [Item 3]
+
+## 🧪 Como testar
+
+```bash
+dotnet build
+dotnet run
+# [Passos para testar manualmente]
+```
+
+## 📝 Checklist
+
+- [ ] Código implementado
+- [ ] Build passa sem erros
+- [ ] Testado localmente
+- [ ] Seguiu convenções do projeto
+- [ ] Documentação atualizada (se necessário)
+````
+
+### Dicas Corporativas
+
+✅ **Faça PRs pequenos** - Mais fácil de revisar (1 Task = 1 PR)  
+✅ **Título descritivo** - Use Conventional Commits (`feat:`, `fix:`, etc.)  
+✅ **Descreva o "porquê"** - Não só "o que", mas "por que" fez assim  
+✅ **Screenshots** - Se mexeu em UI, adicione prints  
+✅ **Marque checklist** - Mostra que você revisou tudo  
+✅ **Delete branches** - Mantenha repositório limpo  
+✅ **Commits atômicos** - Cada commit faz uma coisa  
+✅ **Force-push com cuidado** - Só use se souber o que está fazendo  
+
+### Atalhos Úteis
+
+```bash
+# Ver PRs abertos (com GitHub CLI)
+gh pr list
+
+# Criar PR via terminal
+gh pr create --title "feat: ..." --body "..."
+
+# Fazer checkout de PR para testar
+gh pr checkout 123
+
+# Fazer merge via terminal
+gh pr merge 123 --squash
 ```
 
 ---
