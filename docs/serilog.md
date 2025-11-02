@@ -1,588 +1,440 @@
 # Serilog - Logging Estruturado
 
-## Índice
+## 📋 Índice
 1. [Introdução](#introdução)
 2. [Instalação](#instalação)
-3. [Configuração Básica](#configuração-básica)
-4. [Níveis de Log](#níveis-de-log)
-5. [Sinks (Destinos)](#sinks-destinos)
-6. [Enriquecedores](#enriquecedores)
-7. [Exemplos Práticos](#exemplos-práticos)
+3. [Configuração no Projeto](#configuração-no-projeto)
+4. [Uso no Código](#uso-no-código)
+5. [Níveis de Log](#níveis-de-log)
+6. [Enriquecimento Avançado (Opcional)](#enriquecimento-avançado-opcional)
 
 ---
 
 ## Introdução
 
-**Serilog** é uma biblioteca de logging estruturado para .NET, permitindo registrar eventos de forma rica e pesquisável.
+**Serilog** é uma biblioteca de logging estruturado para .NET que permite registrar eventos de forma organizada e pesquisável, separando logs de sucesso e falha automaticamente.
 
-### Vantagens
-- ✅ Logging estruturado
-- ✅ Múltiplos destinos (console, arquivo, BD, etc)
-- ✅ Formatação flexível
-- ✅ Performance excelente
-- ✅ Fácil configuração
+### ✅ Vantagens
+- Logging estruturado e pesquisável
+- Separação automática de sucesso/falha
+- Múltiplos destinos (console, arquivo)
+- Performance excelente
+- Integração com `Config.cs`
 
 ---
 
 ## Instalação
 
+### Pacotes Necessários
+
 ```bash
-# Core
+# Serilog Core
 dotnet add package Serilog
 
-# Sinks
+# Sinks (destinos dos logs)
 dotnet add package Serilog.Sinks.Console
 dotnet add package Serilog.Sinks.File
 
-# Opcional: Configuração por appsettings.json
-dotnet add package Serilog.Settings.Configuration
+# Enriquecedores básicos (para nome da máquina, etc)
+dotnet add package Serilog.Enrichers.Environment
 ```
+
+**⚠️ Importante:** Execute os comandos na raiz do projeto
 
 ---
 
-## Configuração Básica
+## Configuração no Projeto
 
-### Setup Simples
+### Passo 1: Configurar AutomationSettings.json
 
-```csharp
-using Serilog;
+Adicione a seção `Logging` no seu arquivo de configuração:
 
-class Program
+```json
 {
-    static void Main()
-    {
-        // Configurar Serilog
-        Log.Logger = new LoggerConfiguration()
-            .WriteTo.Console()
-            .WriteTo.File("logs/app.log")
-            .CreateLogger();
-        
-        // Usar
-        Log.Information("Aplicação iniciada");
-        Log.Warning("Este é um aviso");
-        Log.Error("Ocorreu um erro");
-        
-        // Importante: Fechar no final
-        Log.CloseAndFlush();
-    }
+  "Logging": {
+    "DiretorioLogs": "logs",
+    "NivelMinimo": "Information",
+    "ArquivoSucesso": "sucesso/log-{Date}.txt",
+    "ArquivoFalha": "falha/log-{Date}.txt"
+  }
 }
 ```
 
-### Configuração Completa
+**Níveis disponíveis:** `Verbose`, `Debug`, `Information`, `Warning`, `Error`, `Fatal`
 
-```csharp
-Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Debug() // Nível mínimo
-    .Enrich.FromLogContext() // Enriquecimento
-    .Enrich.WithMachineName() // Nome da máquina
-    .Enrich.WithThreadId() // ID da thread
-    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
-    .WriteTo.File(
-        path: "logs/app-.log",
-        rollingInterval: RollingInterval.Day,
-        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}{Exception}"
-    )
-    .CreateLogger();
-```
+---
 
-### Logs Organizados por Sucesso/Falha
+### Passo 2: Criar LoggingTask.cs
 
-Para projetos RPA, é útil separar logs de execuções bem-sucedidas de falhas:
+Crie o arquivo `Workflow/Tasks/LoggingTask.cs`:
 
 ```csharp
 using Serilog;
 using Serilog.Events;
 
-var timestamp = DateTime.Now.ToString("dd-MM-yyyy-HH:mm");
+namespace AdrenalineSpy;
 
-Log.Logger = new LoggerConfiguration()
-    .MinimumLevel.Debug()
-    .WriteTo.Console()
-    // Logs de sucesso (Info, Debug, Verbose)
-    .WriteTo.Logger(lc => lc
-        .Filter.ByIncludingOnly(e => e.Level < LogEventLevel.Warning)
-        .WriteTo.File($"logs/sucesso/{timestamp}.log"))
-    // Logs de falha (Warning, Error, Fatal)
-    .WriteTo.Logger(lc => lc
-        .Filter.ByIncludingOnly(e => e.Level >= LogEventLevel.Warning)
-        .WriteTo.File($"logs/falha/{timestamp}.log"))
-    .CreateLogger();
+/// <summary>
+/// Helper centralizado para logging usando Serilog
+/// </summary>
+public static class LoggingTask
+{
+    private static bool _configurado = false;
+
+    /// <summary>
+    /// Configura o Serilog (chamar UMA VEZ no início)
+    /// </summary>
+    public static void ConfigurarLogger()
+    {
+        if (_configurado)
+            return;
+
+        var config = Config.Instancia;
+        var timestamp = DateTime.Now.ToString("dd-MM-yyyy");
+
+        Log.Logger = new LoggerConfiguration()
+            .MinimumLevel.Is(ParseNivel(config.Logging.NivelMinimo))
+            .Enrich.FromLogContext()
+            .Enrich.WithMachineName()
+            .Enrich.WithProperty("Aplicacao", "AdrenalineSpy")
+            .WriteTo.Console(
+                outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+            // Logs de sucesso
+            .WriteTo.Logger(lc => lc
+                .Filter.ByIncludingOnly(e => e.Level < LogEventLevel.Warning)
+                .WriteTo.File(
+                    path: $"{config.Logging.DiretorioLogs}/{config.Logging.ArquivoSucesso.Replace("{Date}", timestamp)}",
+                    outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}{Exception}"))
+            // Logs de falha
+            .WriteTo.Logger(lc => lc
+                .Filter.ByIncludingOnly(e => e.Level >= LogEventLevel.Warning)
+                .WriteTo.File(
+                    path: $"{config.Logging.DiretorioLogs}/{config.Logging.ArquivoFalha.Replace("{Date}", timestamp)}",
+                    outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}{Exception}"))
+            .CreateLogger();
+
+        _configurado = true;
+        Log.Information("✅ Logger configurado com sucesso!");
+    }
+
+    public static void RegistrarInfo(string mensagem)
+    {
+        Log.Information(mensagem);
+    }
+
+    public static void RegistrarAviso(string mensagem, string contexto)
+    {
+        Log.Warning("[{Contexto}] {Mensagem}", contexto, mensagem);
+    }
+
+    public static void RegistrarErro(Exception ex, string contexto)
+    {
+        Log.Error(ex, "[{Contexto}] Erro: {Mensagem}", contexto, ex.Message);
+    }
+
+    public static void RegistrarDebug(string mensagem)
+    {
+        Log.Debug(mensagem);
+    }
+
+    public static void FecharLogger()
+    {
+        Log.Information("🔚 Encerrando logger...");
+        Log.CloseAndFlush();
+    }
+
+    private static LogEventLevel ParseNivel(string nivel)
+    {
+        return nivel.ToLower() switch
+        {
+            "verbose" => LogEventLevel.Verbose,
+            "debug" => LogEventLevel.Debug,
+            "information" => LogEventLevel.Information,
+            "warning" => LogEventLevel.Warning,
+            "error" => LogEventLevel.Error,
+            "fatal" => LogEventLevel.Fatal,
+            _ => LogEventLevel.Information
+        };
+    }
+}
 ```
 
-**Estrutura gerada:**
+---
+
+### Passo 3: Estrutura de Diretórios
+
+Crie as pastas para os logs (ou deixe o Serilog criar automaticamente):
+
 ```
 logs/
+├── .gitkeep
 ├── sucesso/
-│   ├── 01-11-2025-14:30.log
-│   └── 01-11-2025-16:00.log
+│   └── .gitkeep
 └── falha/
-    └── 01-11-2025-15:45.log
+    └── .gitkeep
 ```
 
-**⚠️ Importante:** Adicione `/logs/` ao `.gitignore`
+**⚠️ Importante:** Adicione `/logs/` ao `.gitignore`:
+
+```gitignore
+# Logs
+logs/*.log
+logs/*.txt
+logs/sucesso/*.log
+logs/sucesso/*.txt
+logs/falha/*.log
+logs/falha/*.txt
+```
+
+---
+
+## Uso no Código
+
+### Em Program.cs
+
+```csharp
+using AdrenalineSpy;
+
+namespace AdrenalineSpy
+{
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            // 1. Carregar configurações
+            Config config = Config.Instancia;
+            
+            if (!config.Validar())
+            {
+                Console.WriteLine("❌ Configurações inválidas!");
+                return;
+            }
+
+            // 2. Configurar logger
+            LoggingTask.ConfigurarLogger();
+
+            try
+            {
+                // 3. Usar logging
+                LoggingTask.RegistrarInfo("=== Aplicação Iniciada ===");
+                
+                // Seu código aqui...
+                
+                LoggingTask.RegistrarInfo("=== Aplicação Finalizada ===");
+            }
+            catch (Exception ex)
+            {
+                LoggingTask.RegistrarErro(ex, "Program.Main");
+            }
+            finally
+            {
+                // 4. SEMPRE fechar
+                LoggingTask.FecharLogger();
+            }
+        }
+    }
+}
+```
+
+### Em Tasks (NavigationTask, ExtractionTask, etc)
+
+```csharp
+namespace AdrenalineSpy;
+
+public class NavigationTask
+{
+    public void Navegar()
+    {
+        try
+        {
+            LoggingTask.RegistrarInfo("Iniciando navegação...");
+            
+            // Código de navegação...
+            
+            LoggingTask.RegistrarInfo("Navegação concluída!");
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro(ex, "NavigationTask.Navegar");
+            throw;
+        }
+    }
+}
+```
 
 ---
 
 ## Níveis de Log
 
-### Níveis Disponíveis (do menos ao mais grave)
+### Quando Usar Cada Nível
 
 ```csharp
-// Verbose - Informações muito detalhadas (debug)
-Log.Verbose("Detalhes técnicos: valor = {Valor}", 42);
+// Verbose - Detalhes técnicos (raramente usado)
+LoggingTask.RegistrarDebug("Valor da variável X: 42");
 
-// Debug - Informações de depuração
-Log.Debug("Variável X = {X}, Y = {Y}", x, y);
+// Debug - Informações de desenvolvimento
+LoggingTask.RegistrarDebug("Processando item 5 de 10");
 
-// Information - Informações gerais do fluxo
-Log.Information("Usuário {Usuario} logou no sistema", "João");
+// Information - Fluxo normal da aplicação ✅ MAIS USADO
+LoggingTask.RegistrarInfo("Usuário logou no sistema");
+LoggingTask.RegistrarInfo("Processamento concluído");
 
-// Warning - Avisos que não impedem execução
-Log.Warning("Tentativa {Tentativa} de 3 falhou", 1);
+// Warning - Algo estranho mas não é erro
+LoggingTask.RegistrarAviso("Tentativa 2 de 3 falhou", "ProcessarItem");
 
-// Error - Erros que podem ser recuperados
-Log.Error("Erro ao processar item {Id}: {Erro}", itemId, erro);
-
-// Fatal - Erros críticos que param a aplicação
-Log.Fatal("Falha crítica no banco de dados");
-```
-
-### Com Exceção
-
-```csharp
+// Error - Erros recuperáveis ✅ IMPORTANTE
 try
 {
     // código
 }
 catch (Exception ex)
 {
-    Log.Error(ex, "Erro ao processar pedido {PedidoId}", pedidoId);
-    // ou
-    Log.Fatal(ex, "Erro fatal irrecuperável");
+    LoggingTask.RegistrarErro(ex, "NomeDaFuncao");
 }
+
+// Fatal - Erros críticos que param tudo
+LoggingTask.RegistrarFatal(ex, "Program.Main");
 ```
 
-### Propriedades Estruturadas
+### Estrutura dos Logs Gerados
 
-```csharp
-// ✅ BOM - Logging estruturado (pesquisável)
-Log.Information("Processado pedido {PedidoId} para cliente {Cliente} no valor de {Valor}", 
-    123, "João Silva", 500.00m);
-
-// ❌ RUIM - String interpolation (não estruturado)
-Log.Information($"Processado pedido {pedidoId} para cliente {cliente}");
+**Console:**
+```
+[14:30:15 INF] ✅ Logger configurado com sucesso!
+[14:30:15 INF] === Aplicação Iniciada ===
+[14:30:16 WRN] [ProcessarItem] Tentativa falhou
+[14:30:17 ERR] [NavigationTask] Erro: Timeout na navegação
 ```
 
----
-
-## Sinks (Destinos)
-
-### Console
-
-```csharp
-.WriteTo.Console(
-    outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+**Arquivo `logs/sucesso/log-01-11-2025-14-30.txt`:**
+```
+2025-11-01 14:30:15 [INF] ✅ Logger configurado com sucesso!
+2025-11-01 14:30:15 [INF] === Aplicação Iniciada ===
+2025-11-01 14:30:20 [INF] === Aplicação Finalizada ===
 ```
 
-### Arquivo
-
-```csharp
-// Arquivo simples
-.WriteTo.File("logs/app.log")
-
-// Com rolling (novo arquivo por dia)
-.WriteTo.File(
-    path: "logs/app-.log",
-    rollingInterval: RollingInterval.Day,
-    retainedFileCountLimit: 30, // Manter últimos 30 dias
-    fileSizeLimitBytes: 10 * 1024 * 1024 // 10 MB
-)
-
-// Arquivo JSON
-.WriteTo.File(
-    new JsonFormatter(),
-    "logs/app.json"
-)
+**Arquivo `logs/falha/log-01-11-2025-14-30.txt`:**
 ```
-
-### Múltiplos Destinos
-
-```csharp
-Log.Logger = new LoggerConfiguration()
-    .WriteTo.Console()
-    .WriteTo.File("logs/app.log")
-    .WriteTo.File("logs/errors.log", restrictedToMinimumLevel: LogEventLevel.Error)
-    .CreateLogger();
-```
-
-### Sink Condicional
-
-```csharp
-.WriteTo.Logger(lc => lc
-    .Filter.ByIncludingOnly(evt => evt.Level == LogEventLevel.Error)
-    .WriteTo.File("logs/errors.log")
-)
+2025-11-01 14:30:16 [WRN] [ProcessarItem] Tentativa falhou
+2025-11-01 14:30:17 [ERR] [NavigationTask] Erro: Timeout na navegação
+System.TimeoutException: A operação expirou...
 ```
 
 ---
 
-## Enriquecedores
+## Enriquecimento Avançado (Opcional)
 
-### Enriquecedores Internos
+Se você quiser adicionar mais informações aos logs, pode enriquecer o `LoggingTask.cs`:
+
+### Adicionar Thread ID
 
 ```csharp
-Log.Logger = new LoggerConfiguration()
-    .Enrich.FromLogContext()      // Contexto do log
-    .Enrich.WithMachineName()     // Nome da máquina
-    .Enrich.WithThreadId()        // ID da thread
-    .Enrich.WithEnvironmentUserName() // Usuário do SO
-    .Enrich.WithProperty("Application", "MeuApp") // Propriedade customizada
-    .Enrich.WithProperty("Version", "1.0.0")
-    .CreateLogger();
+// No ConfigurarLogger(), adicione:
+.Enrich.WithThreadId()
 ```
 
-### LogContext (Propriedades dinâmicas)
+### Adicionar Propriedades Customizadas
+
+```csharp
+.Enrich.WithProperty("Versao", "1.0.0")
+.Enrich.WithProperty("Ambiente", "Producao")
+```
+
+### LogContext (Propriedades Dinâmicas)
 
 ```csharp
 using Serilog.Context;
 
-using (LogContext.PushProperty("UsuarioId", userId))
-using (LogContext.PushProperty("Sessao", sessionId))
+public void ProcessarItem(int itemId)
 {
-    Log.Information("Usuário acessou página");
-    // Logs dentro deste bloco terão UsuarioId e Sessao
+    using (LogContext.PushProperty("ItemId", itemId))
+    {
+        LoggingTask.RegistrarInfo("Processando item");
+        // Todos os logs terão ItemId automaticamente
+    }
 }
 ```
 
----
+### Rolling por Tamanho
 
-## Exemplos Práticos
-
-### Exemplo 1: Configuração para RPA
+Limitar tamanho dos arquivos:
 
 ```csharp
-using Serilog;
-using Serilog.Events;
-
-class Program
-{
-    static void Main()
-    {
-        // Configurar log
-        Log.Logger = new LoggerConfiguration()
-            .MinimumLevel.Information()
-            .MinimumLevel.Override("Microsoft", LogEventLevel.Warning)
-            .Enrich.FromLogContext()
-            .Enrich.WithProperty("Aplicacao", "RPA_AdrenalineSpy")
-            .Enrich.WithMachineName()
-            .WriteTo.Console(
-                outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties}{NewLine}{Exception}")
-            .WriteTo.File(
-                path: "logs/rpa-.log",
-                rollingInterval: RollingInterval.Day,
-                retainedFileCountLimit: 30,
-                outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss} [{Level:u3}] {Message:lj} {Properties}{NewLine}{Exception}")
-            .WriteTo.File(
-                path: "logs/errors-.log",
-                rollingInterval: RollingInterval.Day,
-                restrictedToMinimumLevel: LogEventLevel.Error)
-            .CreateLogger();
-        
-        try
-        {
-            Log.Information("=== RPA Iniciado ===");
-            
-            // Sua automação aqui
-            ExecutarAutomacao();
-            
-            Log.Information("=== RPA Finalizado com Sucesso ===");
-        }
-        catch (Exception ex)
-        {
-            Log.Fatal(ex, "RPA falhou");
-        }
-        finally
-        {
-            Log.CloseAndFlush();
-        }
-    }
-    
-    static void ExecutarAutomacao()
-    {
-        Log.Information("Iniciando processamento");
-        
-        for (int i = 1; i <= 10; i++)
-        {
-            using (LogContext.PushProperty("ItemId", i))
-            {
-                try
-                {
-                    Log.Debug("Processando item {Item}", i);
-                    
-                    // Processar...
-                    Thread.Sleep(100);
-                    
-                    Log.Information("Item {Item} processado com sucesso", i);
-                }
-                catch (Exception ex)
-                {
-                    Log.Error(ex, "Erro ao processar item {Item}", i);
-                }
-            }
-        }
-    }
-}
+.WriteTo.File(
+    path: "logs/app.log",
+    rollingInterval: RollingInterval.Day,
+    retainedFileCountLimit: 30,  // Manter últimos 30 dias
+    fileSizeLimitBytes: 10 * 1024 * 1024  // 10 MB por arquivo
+)
 ```
 
-### Exemplo 2: Classe LoggerHelper
+### Filtros Personalizados
 
 ```csharp
-public static class LoggerHelper
-{
-    public static void ConfigurarLogger(string nomeApp)
-    {
-        Log.Logger = new LoggerConfiguration()
-            .MinimumLevel.Debug()
-            .Enrich.WithProperty("Aplicacao", nomeApp)
-            .Enrich.WithMachineName()
-            .Enrich.FromLogContext()
-            .WriteTo.Console()
-            .WriteTo.File($"logs/{nomeApp}-.log", rollingInterval: RollingInterval.Day)
-            .CreateLogger();
-        
-        Log.Information($"{nomeApp} - Logger configurado");
-    }
-    
-    public static void LogInicio(string processoNome)
-    {
-        Log.Information("========================================");
-        Log.Information("Processo: {Processo} - INICIADO", processoNome);
-        Log.Information("Hora: {Hora}", DateTime.Now);
-        Log.Information("========================================");
-    }
-    
-    public static void LogFim(string processoNome, int sucesso, int erros)
-    {
-        Log.Information("========================================");
-        Log.Information("Processo: {Processo} - FINALIZADO", processoNome);
-        Log.Information("Sucesso: {Sucesso} | Erros: {Erros}", sucesso, erros);
-        Log.Information("Hora: {Hora}", DateTime.Now);
-        Log.Information("========================================");
-    }
-    
-    public static void LogExcecao(Exception ex, string contexto)
-    {
-        Log.Error(ex, "EXCEÇÃO em {Contexto}", contexto);
-        Log.Error("Mensagem: {Mensagem}", ex.Message);
-        Log.Error("StackTrace: {StackTrace}", ex.StackTrace);
-    }
-}
-
-// Uso
-LoggerHelper.ConfigurarLogger("MeuRPA");
-LoggerHelper.LogInicio("ProcessarPedidos");
-
-// ... código ...
-
-LoggerHelper.LogFim("ProcessarPedidos", 95, 5);
-Log.CloseAndFlush();
+// Logar apenas erros específicos
+.WriteTo.Logger(lc => lc
+    .Filter.ByIncludingOnly(evt => 
+        evt.Exception != null && 
+        evt.Exception.GetType() == typeof(TimeoutException))
+    .WriteTo.File("logs/timeouts.log"))
 ```
 
-### Exemplo 3: Integração com Try-Catch
+### Templates de Output Customizados
 
 ```csharp
-public class ProcessadorPedidos
-{
-    public void ProcessarTodos(List<Pedido> pedidos)
-    {
-        Log.Information("Iniciando processamento de {Quantidade} pedidos", pedidos.Count);
-        
-        int sucesso = 0;
-        int erros = 0;
-        
-        foreach (var pedido in pedidos)
-        {
-            using (LogContext.PushProperty("PedidoId", pedido.Id))
-            {
-                try
-                {
-                    Log.Debug("Processando pedido {PedidoId}", pedido.Id);
-                    
-                    ProcessarPedido(pedido);
-                    
-                    sucesso++;
-                    Log.Information("Pedido {PedidoId} processado com sucesso", pedido.Id);
-                }
-                catch (Exception ex)
-                {
-                    erros++;
-                    Log.Error(ex, "Erro ao processar pedido {PedidoId}", pedido.Id);
-                }
-            }
-        }
-        
-        Log.Information("Processamento concluído: {Sucesso} sucessos, {Erros} erros", sucesso, erros);
-    }
-    
-    private void ProcessarPedido(Pedido pedido)
-    {
-        Log.Debug("Validando pedido");
-        ValidarPedido(pedido);
-        
-        Log.Debug("Salvando no banco");
-        SalvarPedido(pedido);
-        
-        Log.Debug("Enviando email");
-        EnviarEmailConfirmacao(pedido);
-    }
-}
-```
+// Mais detalhado
+outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] [{MachineName}] {Message:lj}{NewLine}{Exception}"
 
-### Exemplo 4: Configuração por appsettings.json
-
-```json
-// appsettings.json
-{
-  "Serilog": {
-    "Using": [ "Serilog.Sinks.Console", "Serilog.Sinks.File" ],
-    "MinimumLevel": {
-      "Default": "Information",
-      "Override": {
-        "Microsoft": "Warning",
-        "System": "Warning"
-      }
-    },
-    "WriteTo": [
-      {
-        "Name": "Console",
-        "Args": {
-          "outputTemplate": "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}"
-        }
-      },
-      {
-        "Name": "File",
-        "Args": {
-          "path": "logs/app-.log",
-          "rollingInterval": "Day",
-          "retainedFileCountLimit": 30
-        }
-      }
-    ],
-    "Enrich": [ "FromLogContext", "WithMachineName", "WithThreadId" ],
-    "Properties": {
-      "Application": "MeuRPA"
-    }
-  }
-}
-```
-
-```csharp
-// Program.cs
-using Microsoft.Extensions.Configuration;
-using Serilog;
-
-var configuration = new ConfigurationBuilder()
-    .AddJsonFile("appsettings.json")
-    .Build();
-
-Log.Logger = new LoggerConfiguration()
-    .ReadFrom.Configuration(configuration)
-    .CreateLogger();
-
-try
-{
-    Log.Information("Aplicação iniciada");
-    // ... código ...
-}
-finally
-{
-    Log.CloseAndFlush();
-}
-```
-
----
-
-## Templates de Output
-
-### Templates Úteis
-
-```csharp
-// Simples
-"[{Timestamp:HH:mm:ss} {Level}] {Message}{NewLine}{Exception}"
-
-// Detalhado
-"{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}"
-
-// Com cores (Console)
-"[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}"
-
-// Para arquivo
-"{Timestamp:yyyy-MM-dd HH:mm:ss} [{Level}] [{SourceContext}] {Message}{NewLine}{Exception}"
+// Com propriedades
+outputTemplate: "[{Timestamp:HH:mm:ss} {Level}] {Message} {Properties:j}{NewLine}{Exception}"
 ```
 
 ---
 
 ## Boas Práticas
 
-### 1. Sempre Feche o Logger
+### ✅ Fazer
 
 ```csharp
-try
-{
-    // código
+// Usar logging estruturado
+LoggingTask.RegistrarInfo("Processado pedido ID: {0}", pedidoId);
+
+// Logar no catch
+try { }
+catch (Exception ex) 
+{ 
+    LoggingTask.RegistrarErro(ex, "Contexto"); 
 }
-finally
-{
-    Log.CloseAndFlush();
-}
-```
 
-### 2. Use Logging Estruturado
-
-```csharp
-// ✅ BOM
-Log.Information("Pedido {PedidoId} processado em {Tempo}ms", id, tempo);
-
-// ❌ RUIM
-Log.Information($"Pedido {id} processado em {tempo}ms");
-```
-
-### 3. Níveis Apropriados
-
-- **Verbose/Debug**: Desenvolvimento
-- **Information**: Fluxo normal
-- **Warning**: Algo estranho mas não é erro
-- **Error**: Erros recuperáveis
-- **Fatal**: Erros críticos
-
-### 4. LogContext para Contexto
-
-```csharp
-using (LogContext.PushProperty("CorrelationId", correlationId))
-{
-    // Todos os logs terão CorrelationId
+// Sempre fechar no finally
+finally 
+{ 
+    LoggingTask.FecharLogger(); 
 }
 ```
 
-### 5. Não Logue Dados Sensíveis
+### ❌ Evitar
 
 ```csharp
-// ❌ RUIM - expõe senha
-Log.Information("Login: {Usuario} com senha {Senha}", user, password);
+// String interpolation (perde estrutura)
+LoggingTask.RegistrarInfo($"Processado pedido {pedidoId}");
 
-// ✅ BOM
-Log.Information("Login bem-sucedido para {Usuario}", user);
+// Logar dados sensíveis
+LoggingTask.RegistrarInfo($"Senha: {senha}");  // ❌ NUNCA!
+
+// Esquecer de fechar
+// Sem Log.CloseAndFlush() = logs podem se perder
 ```
 
 ---
 
 ## Recursos Adicionais
 
-- **Site Oficial**: https://serilog.net/
-- **GitHub**: https://github.com/serilog/serilog
-- **Sinks**: https://github.com/serilog/serilog/wiki/Provided-Sinks
+- **Site Oficial:** https://serilog.net/
+- **GitHub:** https://github.com/serilog/serilog
+- **Sinks Disponíveis:** https://github.com/serilog/serilog/wiki/Provided-Sinks
 
 ---
 
-**Versão:** 1.0  
+**Versão:** 2.0 (Simplificado)  
 **Última atualização:** Novembro 2025
