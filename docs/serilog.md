@@ -207,7 +207,9 @@ public static class LoggingTask
 }
 ```
 
-### 2. Integrar no Program.cs
+---
+
+## Como Adicionar no Program.cs
 
 Modifique o `Program.cs` para inicializar o logging:
 

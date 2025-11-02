@@ -601,6 +601,294 @@ public class NoticiaBasica
 
 ---
 
+## Como Adicionar no Program.cs
+
+### Evoluindo o Program.cs com Web Scraping
+
+Após implementar **RestSharp+JSON**, **Serilog** e criar a **NavigationTask.cs**, agora você integra o web scraping no Program.cs.
+
+### Program.cs - Fase: Primeira Execução de Scraping
+```csharp
+static async Task Main(string[] args)
+{
+    Config config = Config.Instancia;
+    
+    if (!config.Validar())
+    {
+        Console.WriteLine("❌ Configurações inválidas!");
+        return;
+    }
+    
+    LoggingTask.ConfigurarLogger();
+    
+    try
+    {
+        LoggingTask.RegistrarInfo("=== AdrenalineSpy Iniciado ===");
+        
+        // ADICIONADO: Primeira execução do web scraping
+        var navigationTask = new NavigationTask();
+        
+        LoggingTask.RegistrarInfo("Iniciando coleta de URLs...");
+        var urls = await navigationTask.ColetarUrlsCategoriaAsync("tecnologia");
+        
+        LoggingTask.RegistrarInfo($"Coletadas {urls.Count} URLs da categoria tecnologia");
+        
+        // Exibir URLs coletadas (temporário para teste)
+        foreach (var url in urls.Take(5)) // Apenas 5 primeiras
+        {
+            Console.WriteLine($"📄 {url}");
+        }
+        
+        LoggingTask.RegistrarInfo("=== Primeira coleta concluída ===");
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "Program.Main");
+    }
+    finally
+    {
+        LoggingTask.FecharLogger();
+    }
+}
+```
+
+### Program.cs - Fase: Múltiplas Categorias
+```csharp
+static async Task Main(string[] args)
+{
+    Config config = Config.Instancia;
+    LoggingTask.ConfigurarLogger();
+    
+    try
+    {
+        LoggingTask.RegistrarInfo("=== AdrenalineSpy Iniciado ===");
+        
+        var navigationTask = new NavigationTask();
+        var todasUrls = new List<string>();
+        
+        // ADICIONADO: Processar múltiplas categorias
+        foreach (var categoria in config.Categorias.Keys)
+        {
+            LoggingTask.RegistrarInfo($"Processando categoria: {categoria}");
+            
+            var urls = await navigationTask.ColetarUrlsCategoriaAsync(categoria);
+            todasUrls.AddRange(urls);
+            
+            LoggingTask.RegistrarInfo($"Categoria {categoria}: {urls.Count} URLs coletadas");
+            
+            // Aguardar entre categorias (evitar sobrecarga)
+            await Task.Delay(2000);
+        }
+        
+        LoggingTask.RegistrarInfo($"Total geral: {todasUrls.Count} URLs coletadas");
+        
+        LoggingTask.RegistrarInfo("=== Coleta de URLs finalizada ===");
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "Program.Main");
+    }
+    finally
+    {
+        LoggingTask.FecharLogger();
+    }
+}
+```
+
+### Program.cs - Fase: Com Argumentos de Linha de Comando
+```csharp
+static async Task Main(string[] args)
+{
+    Config config = Config.Instancia;
+    LoggingTask.ConfigurarLogger();
+    
+    try
+    {
+        LoggingTask.RegistrarInfo("=== AdrenalineSpy Iniciado ===");
+        
+        var navigationTask = new NavigationTask();
+        
+        // ADICIONADO: Processar argumentos
+        string categoria = ObterCategoriaArgumentos(args);
+        bool modoHeadless = args.Contains("--headless");
+        
+        if (modoHeadless)
+        {
+            LoggingTask.RegistrarInfo("Modo headless ativado");
+        }
+        
+        if (!string.IsNullOrEmpty(categoria))
+        {
+            // Categoria específica
+            LoggingTask.RegistrarInfo($"Coletando categoria específica: {categoria}");
+            var urls = await navigationTask.ColetarUrlsCategoriaAsync(categoria);
+            LoggingTask.RegistrarInfo($"Coletadas {urls.Count} URLs");
+        }
+        else
+        {
+            // Todas as categorias
+            await ProcessarTodasCategorias(navigationTask, config);
+        }
+        
+        LoggingTask.RegistrarInfo("=== Scraping finalizado ===");
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "Program.Main");
+    }
+    finally
+    {
+        LoggingTask.FecharLogger();
+    }
+}
+
+private static string ObterCategoriaArgumentos(string[] args)
+{
+    var argCategoria = args.FirstOrDefault(a => a.StartsWith("--categoria="));
+    return argCategoria?.Substring(12); // Remove "--categoria="
+}
+
+private static async Task ProcessarTodasCategorias(NavigationTask navigationTask, Config config)
+{
+    foreach (var categoria in config.Categorias.Keys)
+    {
+        LoggingTask.RegistrarInfo($"Processando: {categoria}");
+        
+        var urls = await navigationTask.ColetarUrlsCategoriaAsync(categoria);
+        LoggingTask.RegistrarInfo($"{categoria}: {urls.Count} URLs");
+        
+        await Task.Delay(2000); // Intervalo entre categorias
+    }
+}
+```
+
+### Program.cs - Fase: Com Tratamento de Erros Robusto
+```csharp
+static async Task Main(string[] args)
+{
+    Config config = Config.Instancia;
+    LoggingTask.ConfigurarLogger();
+    
+    try
+    {
+        LoggingTask.RegistrarInfo("=== AdrenalineSpy Iniciado ===");
+        
+        // ADICIONADO: Inicialização com verificações
+        if (!await ValidarConexaoInternet())
+        {
+            LoggingTask.RegistrarErro(new Exception("Sem conexão com internet"), "Program");
+            return;
+        }
+        
+        if (!await ValidarSiteDisponivel(config.Navegacao.UrlBase))
+        {
+            LoggingTask.RegistrarErro(new Exception("Site Adrenaline indisponível"), "Program");
+            return;
+        }
+        
+        var navigationTask = new NavigationTask();
+        
+        // Executar com retry automático
+        await ExecutarComRetry(async () =>
+        {
+            await ProcessarTodasCategorias(navigationTask, config);
+        }, maxTentativas: 3);
+        
+        LoggingTask.RegistrarInfo("=== Scraping concluído com sucesso ===");
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "Program.Main - Erro Fatal");
+        Console.WriteLine($"❌ Erro fatal: {ex.Message}");
+    }
+    finally
+    {
+        LoggingTask.FecharLogger();
+    }
+}
+
+private static async Task<bool> ValidarConexaoInternet()
+{
+    try
+    {
+        using var client = new HttpClient();
+        client.Timeout = TimeSpan.FromSeconds(10);
+        var response = await client.GetAsync("https://www.google.com");
+        return response.IsSuccessStatusCode;
+    }
+    catch
+    {
+        return false;
+    }
+}
+
+private static async Task<bool> ValidarSiteDisponivel(string url)
+{
+    try
+    {
+        using var client = new HttpClient();
+        client.Timeout = TimeSpan.FromSeconds(15);
+        var response = await client.GetAsync(url);
+        return response.IsSuccessStatusCode;
+    }
+    catch
+    {
+        return false;
+    }
+}
+
+private static async Task ExecutarComRetry(Func<Task> acao, int maxTentativas = 3)
+{
+    for (int tentativa = 1; tentativa <= maxTentativas; tentativa++)
+    {
+        try
+        {
+            await acao();
+            return; // Sucesso
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarAviso($"Tentativa {tentativa} falhou: {ex.Message}");
+            
+            if (tentativa == maxTentativas)
+                throw; // Última tentativa, propagar erro
+                
+            await Task.Delay(5000 * tentativa); // Delay progressivo
+        }
+    }
+}
+```
+
+### Exemplos de Uso da Linha de Comando
+
+```bash
+# Executar todas as categorias
+dotnet run
+
+# Categoria específica
+dotnet run -- --categoria=tecnologia
+
+# Modo headless
+dotnet run -- --headless
+
+# Combinado
+dotnet run -- --categoria=games --headless
+```
+
+### ⚠️ Ordem de Implementação Recomendada
+
+1. **Comece simples** - Uma categoria, URLs impressas no console
+2. **Adicione múltiplas categorias** - Loop pelas categorias do Config
+3. **Implemente argumentos** - Flexibilidade de execução
+4. **Adicione validações** - Verificar internet e site
+5. **Implemente retry** - Robustez para falhas temporárias
+
+### 💡 Próxima Evolução
+
+Após dominar a coleta de URLs, o próximo passo será implementar **ExtractionTask** para extrair dados de cada página e **ORM** para salvar no banco de dados.
+
+---
+
 ## 6. Métodos Mais Usados
 
 ### 6.1. Navegação Básica

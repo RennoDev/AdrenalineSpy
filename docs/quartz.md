@@ -682,6 +682,607 @@ public class BackupDadosJob : IJob
 }
 ```
 
+---
+
+## Como Adicionar no Program.cs
+
+### Transformando Program.cs em Serviço Agendado
+
+O **Quartz.NET** representa a **evolução final** do Program.cs - de execução manual para **automação completa**. Esta é a fase onde o AdrenalineSpy se torna verdadeiramente autônomo.
+
+### Program.cs - Fase: Primeira Implementação de Agendamento
+```csharp
+using Quartz;
+using Quartz.Impl;
+
+static async Task Main(string[] args)
+{
+    Config config = Config.Instancia;
+    LoggingTask.ConfigurarLogger();
+    
+    try
+    {
+        LoggingTask.RegistrarInfo("=== AdrenalineSpy Iniciado ===");
+        
+        // Verificar se deve rodar como agendador
+        if (args.Contains("--scheduler") || args.Contains("--daemon"))
+        {
+            LoggingTask.RegistrarInfo("🕐 Modo agendador ativado - inicializando Quartz.NET");
+            
+            // ADICIONADO: Inicializar agendador
+            await IniciarAgendador(config);
+        }
+        else
+        {
+            LoggingTask.RegistrarInfo("▶️ Modo execução única");
+            
+            // Execução manual normal (já implementada)
+            await ExecutarWorkflowCompleto(config);
+        }
+        
+        LoggingTask.RegistrarInfo("=== Inicialização finalizada ===");
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "Program.Main");
+        
+        // Notificar erro (já implementado com MailKit)
+        await NotificarErroPorEmail(ex, config);
+    }
+    finally
+    {
+        LoggingTask.FecharLogger();
+    }
+}
+
+private static async Task IniciarAgendador(Config config)
+{
+    // Criar scheduler
+    StdSchedulerFactory factory = new StdSchedulerFactory();
+    IScheduler scheduler = await factory.GetScheduler();
+    
+    // Configurar job de scraping
+    IJobDetail job = JobBuilder.Create<AdrenalineScrapingJob>()
+        .WithIdentity("scraping-job", "adrenaline-group")
+        .Build();
+    
+    // Configurar trigger com base na configuração
+    ITrigger trigger = TriggerBuilder.Create()
+        .WithIdentity("scraping-trigger", "adrenaline-group")
+        .WithCronSchedule(config.Agendamento.CronExpression)
+        .Build();
+    
+    // Registrar job
+    await scheduler.ScheduleJob(job, trigger);
+    
+    LoggingTask.RegistrarInfo($"📅 Job agendado: {config.Agendamento.CronExpression}");
+    LoggingTask.RegistrarInfo($"⏰ Próxima execução: {trigger.GetNextFireTime():dd/MM/yyyy HH:mm:ss}");
+    
+    // Iniciar scheduler
+    await scheduler.Start();
+    
+    LoggingTask.RegistrarInfo("✅ Quartz.NET iniciado - pressione CTRL+C para parar");
+    
+    // Aguardar sinal de parada
+    await AguardarSinalParada(scheduler);
+}
+
+private static async Task AguardarSinalParada(IScheduler scheduler)
+{
+    // Capturar CTRL+C para parada graceful
+    Console.CancelKeyPress += async (sender, e) =>
+    {
+        e.Cancel = true;
+        LoggingTask.RegistrarInfo("🛑 Sinal de parada recebido...");
+        
+        await scheduler.Shutdown(true);
+        LoggingTask.RegistrarInfo("✅ Scheduler parado graciosamente");
+        
+        Environment.Exit(0);
+    };
+    
+    // Manter aplicação viva
+    await Task.Delay(Timeout.Infinite);
+}
+```
+
+### Program.cs - Fase: Múltiplos Jobs e Monitoramento
+```csharp
+static async Task Main(string[] args)
+{
+    Config config = Config.Instancia;
+    LoggingTask.ConfigurarLogger();
+    
+    try
+    {
+        LoggingTask.RegistrarInfo("=== AdrenalineSpy Scheduler Iniciado ===");
+        
+        if (args.Contains("--scheduler"))
+        {
+            await IniciarAgendadorCompleto(config, args);
+        }
+        else if (args.Contains("--install-service"))
+        {
+            await InstalarComoServico();
+        }
+        else if (args.Contains("--uninstall-service"))
+        {
+            await DesinstalarServico();
+        }
+        else
+        {
+            // Execução manual
+            await ExecutarWorkflowCompleto(config);
+        }
+        
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "Program.Main");
+        await NotificarErroPorEmail(ex, config);
+    }
+    finally
+    {
+        LoggingTask.FecharLogger();
+    }
+}
+
+private static async Task IniciarAgendadorCompleto(Config config, string[] args)
+{
+    StdSchedulerFactory factory = new StdSchedulerFactory();
+    IScheduler scheduler = await factory.GetScheduler();
+    
+    // ADICIONADO: Múltiplos jobs configuráveis
+    await ConfigurarJobs(scheduler, config);
+    
+    // ADICIONADO: Listeners para monitoramento
+    await ConfigurarListeners(scheduler);
+    
+    await scheduler.Start();
+    
+    LoggingTask.RegistrarInfo("🚀 Scheduler completo iniciado");
+    
+    // ADICIONADO: Interface de controle por console
+    if (!args.Contains("--silent"))
+    {
+        await ExecutarInterfaceConsole(scheduler);
+    }
+    else
+    {
+        await AguardarSinalParada(scheduler);
+    }
+}
+
+private static async Task ConfigurarJobs(IScheduler scheduler, Config config)
+{
+    // Job 1: Scraping principal
+    var scrapingJob = JobBuilder.Create<AdrenalineScrapingJob>()
+        .WithIdentity("scraping-job", "adrenaline")
+        .Build();
+    
+    var scrapingTrigger = TriggerBuilder.Create()
+        .WithIdentity("scraping-trigger", "adrenaline")
+        .WithCronSchedule(config.Agendamento.CronExpression)
+        .Build();
+    
+    await scheduler.ScheduleJob(scrapingJob, scrapingTrigger);
+    LoggingTask.RegistrarInfo($"📊 Job Scraping: {config.Agendamento.CronExpression}");
+    
+    // Job 2: Relatório diário (se configurado)
+    if (config.Agendamento.RelatoriosAutomaticos)
+    {
+        var relatorioJob = JobBuilder.Create<RelatorioJob>()
+            .WithIdentity("relatorio-job", "adrenaline")
+            .Build();
+        
+        var relatorioTrigger = TriggerBuilder.Create()
+            .WithIdentity("relatorio-trigger", "adrenaline")
+            .WithCronSchedule(config.Agendamento.CronRelatorio) // Ex: "0 0 8 * * ?" (todo dia 8h)
+            .Build();
+        
+        await scheduler.ScheduleJob(relatorioJob, relatorioTrigger);
+        LoggingTask.RegistrarInfo($"📈 Job Relatório: {config.Agendamento.CronRelatorio}");
+    }
+    
+    // Job 3: Limpeza de logs antigos (opcional)
+    if (config.Agendamento.LimpezaAutomatica)
+    {
+        var limpezaJob = JobBuilder.Create<LimpezaJob>()
+            .WithIdentity("limpeza-job", "manutencao")
+            .Build();
+        
+        var limpezaTrigger = TriggerBuilder.Create()
+            .WithIdentity("limpeza-trigger", "manutencao")
+            .WithCronSchedule("0 0 2 * * ?") // Todo dia às 2h
+            .Build();
+        
+        await scheduler.ScheduleJob(limpezaJob, limpezaTrigger);
+        LoggingTask.RegistrarInfo("🧹 Job Limpeza: Todo dia às 2h");
+    }
+    
+    // Job 4: Health check (verificar se tudo está funcionando)
+    var healthJob = JobBuilder.Create<HealthCheckJob>()
+        .WithIdentity("health-job", "monitoramento")
+        .Build();
+    
+    var healthTrigger = TriggerBuilder.Create()
+        .WithIdentity("health-trigger", "monitoramento")
+        .WithSimpleSchedule(x => x
+            .WithIntervalInMinutes(30)
+            .RepeatForever())
+        .Build();
+    
+    await scheduler.ScheduleJob(healthJob, healthTrigger);
+    LoggingTask.RegistrarInfo("💗 Job Health Check: A cada 30 minutos");
+}
+
+private static async Task ConfigurarListeners(IScheduler scheduler)
+{
+    // Listener para monitorar execuções
+    var jobListener = new AdrenalineJobListener();
+    scheduler.ListenerManager.AddJobListener(jobListener, GroupMatcher<JobKey>.AnyGroup());
+    
+    LoggingTask.RegistrarInfo("👂 Listeners de monitoramento configurados");
+}
+
+private static async Task ExecutarInterfaceConsole(IScheduler scheduler)
+{
+    LoggingTask.RegistrarInfo("📱 Interface de console ativada");
+    Console.WriteLine("\n=== CONTROLE ADRENALINESPY ===");
+    Console.WriteLine("Comandos disponíveis:");
+    Console.WriteLine("  status  - Ver status dos jobs");
+    Console.WriteLine("  pause   - Pausar todos os jobs");  
+    Console.WriteLine("  resume  - Retomar jobs pausados");
+    Console.WriteLine("  run     - Executar scraping agora");
+    Console.WriteLine("  quit    - Sair");
+    Console.WriteLine("================================\n");
+    
+    while (true)
+    {
+        Console.Write("AdrenalineSpy> ");
+        string comando = Console.ReadLine()?.ToLower().Trim();
+        
+        try
+        {
+            switch (comando)
+            {
+                case "status":
+                    await ExibirStatusJobs(scheduler);
+                    break;
+                    
+                case "pause":
+                    await scheduler.PauseAll();
+                    Console.WriteLine("⏸️ Todos os jobs pausados");
+                    break;
+                    
+                case "resume":
+                    await scheduler.ResumeAll();
+                    Console.WriteLine("▶️ Jobs retomados");
+                    break;
+                    
+                case "run":
+                    await ExecutarScrapingAgora(scheduler);
+                    break;
+                    
+                case "quit":
+                case "exit":
+                    await scheduler.Shutdown(true);
+                    return;
+                    
+                default:
+                    if (!string.IsNullOrEmpty(comando))
+                        Console.WriteLine("❌ Comando não reconhecido");
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ Erro: {ex.Message}");
+            LoggingTask.RegistrarErro(ex, "Console Command");
+        }
+    }
+}
+
+private static async Task ExibirStatusJobs(IScheduler scheduler)
+{
+    var jobKeys = await scheduler.GetJobKeys(GroupMatcher<JobKey>.AnyGroup());
+    
+    Console.WriteLine("\n📊 STATUS DOS JOBS:");
+    
+    foreach (var jobKey in jobKeys)
+    {
+        var jobDetail = await scheduler.GetJobDetail(jobKey);
+        var triggers = await scheduler.GetTriggersOfJob(jobKey);
+        
+        Console.WriteLine($"\n🔧 Job: {jobKey.Name}");
+        Console.WriteLine($"   Grupo: {jobKey.Group}");
+        Console.WriteLine($"   Classe: {jobDetail.JobType.Name}");
+        
+        foreach (var trigger in triggers)
+        {
+            var state = await scheduler.GetTriggerState(trigger.Key);
+            var nextFire = trigger.GetNextFireTime();
+            
+            Console.WriteLine($"   ⏰ Próxima execução: {nextFire:dd/MM/yyyy HH:mm:ss}");
+            Console.WriteLine($"   📍 Estado: {state}");
+        }
+    }
+    Console.WriteLine();
+}
+
+private static async Task ExecutarScrapingAgora(IScheduler scheduler)
+{
+    Console.WriteLine("🚀 Iniciando execução manual do scraping...");
+    
+    var jobKey = new JobKey("scraping-job", "adrenaline");
+    await scheduler.TriggerJob(jobKey);
+    
+    Console.WriteLine("✅ Scraping iniciado - verifique os logs para acompanhar");
+}
+```
+
+### Program.cs - Fase: Serviço Windows Completo
+```csharp
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.DependencyInjection;
+
+static async Task Main(string[] args)
+{
+    // ADICIONADO: Suporte completo a Windows Service
+    if (args.Contains("--service"))
+    {
+        await ExecutarComoServico(args);
+    }
+    else
+    {
+        await ExecutarComoConsole(args);
+    }
+}
+
+private static async Task ExecutarComoServico(string[] args)
+{
+    LoggingTask.ConfigurarLogger();
+    LoggingTask.RegistrarInfo("🔧 Iniciando como Windows Service");
+    
+    var host = Host.CreateDefaultBuilder(args)
+        .UseWindowsService()
+        .ConfigureServices((context, services) =>
+        {
+            services.AddSingleton<Config>(Config.Instancia);
+            services.AddHostedService<AdrenalineSchedulerService>();
+        })
+        .Build();
+    
+    await host.RunAsync();
+}
+
+private static async Task ExecutarComoConsole(string[] args)
+{
+    Config config = Config.Instancia;
+    LoggingTask.ConfigurarLogger();
+    
+    try
+    {
+        if (args.Contains("--scheduler"))
+        {
+            await IniciarAgendadorCompleto(config, args);
+        }
+        else
+        {
+            await ExecutarWorkflowCompleto(config);
+        }
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "Program.Main");
+        await NotificarErroPorEmail(ex, config);
+    }
+    finally
+    {
+        LoggingTask.FecharLogger();
+    }
+}
+
+// Serviço para integração com Windows Services
+public class AdrenalineSchedulerService : BackgroundService
+{
+    private readonly Config _config;
+    private IScheduler _scheduler;
+    
+    public AdrenalineSchedulerService(Config config)
+    {
+        _config = config;
+    }
+    
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        LoggingTask.RegistrarInfo("🚀 AdrenalineSchedulerService iniciando...");
+        
+        try
+        {
+            StdSchedulerFactory factory = new StdSchedulerFactory();
+            _scheduler = await factory.GetScheduler();
+            
+            await ConfigurarJobs(_scheduler, _config);
+            await _scheduler.Start();
+            
+            LoggingTask.RegistrarInfo("✅ Scheduler iniciado como serviço");
+            
+            // Aguardar sinal de parada
+            stoppingToken.Register(async () =>
+            {
+                LoggingTask.RegistrarInfo("🛑 Parando serviço...");
+                await _scheduler?.Shutdown(true);
+                LoggingTask.RegistrarInfo("✅ Serviço parado");
+            });
+            
+            await Task.Delay(Timeout.Infinite, stoppingToken);
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro(ex, "AdrenalineSchedulerService");
+            throw;
+        }
+    }
+}
+```
+
+### Exemplos de Uso da Linha de Comando
+
+```bash
+# Execução única (manual)
+dotnet run
+
+# Modo agendador com interface
+dotnet run -- --scheduler
+
+# Modo agendador silencioso (para produção)
+dotnet run -- --scheduler --silent
+
+# Instalar como serviço Windows
+dotnet run -- --install-service
+
+# Executar como serviço
+dotnet run -- --service
+
+# Desinstalar serviço
+dotnet run -- --uninstall-service
+
+# Teste de configuração (sem executar)
+dotnet run -- --test-config
+```
+
+### Scripts de Instalação/Desinstalação
+
+```csharp
+private static async Task InstalarComoServico()
+{
+    try
+    {
+        LoggingTask.RegistrarInfo("📦 Instalando como serviço Windows...");
+        
+        string serviceName = "AdrenalineSpyScheduler";
+        string displayName = "AdrenalineSpy RPA Scheduler";
+        string description = "Serviço de automação RPA para coleta de notícias do Adrenaline.com.br";
+        
+        string executablePath = Environment.ProcessPath;
+        string arguments = "--service";
+        
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "sc",
+            Arguments = $"create {serviceName} binPath= \"{executablePath} {arguments}\" DisplayName= \"{displayName}\" start= auto",
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        
+        using var process = Process.Start(startInfo);
+        await process.WaitForExitAsync();
+        
+        if (process.ExitCode == 0)
+        {
+            Console.WriteLine($"✅ Serviço '{serviceName}' instalado com sucesso");
+            Console.WriteLine($"💡 Use 'net start {serviceName}' para iniciar");
+        }
+        else
+        {
+            Console.WriteLine($"❌ Falha ao instalar serviço (código: {process.ExitCode})");
+        }
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "InstalarComoServico");
+        Console.WriteLine($"❌ Erro ao instalar serviço: {ex.Message}");
+    }
+}
+
+private static async Task DesinstalarServico()
+{
+    try
+    {
+        LoggingTask.RegistrarInfo("🗑️ Desinstalando serviço Windows...");
+        
+        string serviceName = "AdrenalineSpyScheduler";
+        
+        // Parar serviço se estiver rodando
+        var stopInfo = new ProcessStartInfo
+        {
+            FileName = "net",
+            Arguments = $"stop {serviceName}",
+            UseShellExecute = false
+        };
+        
+        using (var stopProcess = Process.Start(stopInfo))
+        {
+            await stopProcess.WaitForExitAsync();
+        }
+        
+        // Remover serviço
+        var deleteInfo = new ProcessStartInfo
+        {
+            FileName = "sc",
+            Arguments = $"delete {serviceName}",
+            UseShellExecute = false,
+            RedirectStandardOutput = true
+        };
+        
+        using var deleteProcess = Process.Start(deleteInfo);
+        await deleteProcess.WaitForExitAsync();
+        
+        if (deleteProcess.ExitCode == 0)
+        {
+            Console.WriteLine($"✅ Serviço '{serviceName}' removido com sucesso");
+        }
+        else
+        {
+            Console.WriteLine($"❌ Falha ao remover serviço (código: {deleteProcess.ExitCode})");
+        }
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "DesinstalarServico");
+        Console.WriteLine($"❌ Erro ao desinstalar serviço: {ex.Message}");
+    }
+}
+```
+
+### ⚠️ Configurações Críticas no AutomationSettings.json
+
+```json
+{
+  "Agendamento": {
+    "CronExpression": "0 0 */6 * * ?",
+    "CronRelatorio": "0 0 8 * * ?",
+    "RelatoriosAutomaticos": true,
+    "LimpezaAutomatica": true,
+    "TimeZone": "E. South America Standard Time",
+    "MaxConcurrentJobs": 1
+  }
+}
+```
+
+### 💡 Padrões de Execução Recomendados
+
+1. **Desenvolvimento**: `--scheduler` (com interface console)
+2. **Teste**: `--scheduler --silent` (sem interface)
+3. **Produção**: `--service` (como serviço Windows)
+4. **Debug**: Execução manual sem agendamento
+
+### 🔄 Evolução Completa Alcançada
+
+Com **Quartz.NET** implementado, o AdrenalineSpy agora é um **sistema RPA completo**:
+- ✅ Coleta automatizada (Playwright)  
+- ✅ Persistência (ORM + Docker)
+- ✅ Exportação (Excel, CSV, PDF)
+- ✅ Notificações (MailKit)
+- ✅ **Agendamento autônomo (Quartz.NET)**
+- ⏳ Interface gráfica (próximo: GUI)
+
+O sistema agora pode operar **completamente sozinho**, executando scraping, salvando dados, gerando relatórios e enviando notificações de forma automática e agendada! 🎉
+
+---
+
 ## Métodos Mais Usados
 
 ### Inicializar Quartz no Program.cs

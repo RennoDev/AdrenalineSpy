@@ -615,6 +615,364 @@ dotnet ef database drop --force
 dotnet ef database update
 ```
 
+---
+
+## Como Adicionar no Program.cs
+
+### Evoluindo o Program.cs com Banco de Dados
+
+Após implementar **Playwright** (coleta de URLs), agora você integra o banco de dados para **salvar** os dados coletados.
+
+### Program.cs - Fase: Primeira Conexão com Banco
+```csharp
+static async Task Main(string[] args)
+{
+    Config config = Config.Instancia;
+    LoggingTask.ConfigurarLogger();
+    
+    try
+    {
+        LoggingTask.RegistrarInfo("=== AdrenalineSpy Iniciado ===");
+        
+        // ADICIONADO: Testar conexão com banco
+        var migrationTask = new MigrationTask();
+        
+        LoggingTask.RegistrarInfo("Verificando conexão com banco de dados...");
+        bool conexaoOk = await migrationTask.TestarConexaoAsync();
+        
+        if (!conexaoOk)
+        {
+            LoggingTask.RegistrarErro(new Exception("Falha na conexão com banco"), "Program");
+            Console.WriteLine("❌ Erro: Não foi possível conectar ao banco de dados");
+            Console.WriteLine("💡 Verifique se o Docker está rodando e a connection string está correta");
+            return;
+        }
+        
+        LoggingTask.RegistrarInfo("✅ Conexão com banco estabelecida");
+        
+        // Coleta de URLs (já implementado)
+        var navigationTask = new NavigationTask();
+        var urls = await navigationTask.ColetarUrlsCategoriaAsync("tecnologia");
+        
+        LoggingTask.RegistrarInfo($"Coletadas {urls.Count} URLs - preparando para salvar no banco");
+        
+        // ADICIONADO: Salvar URLs no banco
+        await migrationTask.SalvarUrlsAsync(urls, "tecnologia");
+        
+        LoggingTask.RegistrarInfo("=== URLs salvas no banco com sucesso ===");
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "Program.Main");
+    }
+    finally
+    {
+        LoggingTask.FecharLogger();
+    }
+}
+```
+
+### Program.cs - Fase: Processamento Completo (URLs → Extração → Banco)
+```csharp
+static async Task Main(string[] args)
+{
+    Config config = Config.Instancia;
+    LoggingTask.ConfigurarLogger();
+    
+    try
+    {
+        LoggingTask.RegistrarInfo("=== AdrenalineSpy Iniciado ===");
+        
+        // Validações iniciais
+        var migrationTask = new MigrationTask();
+        
+        if (!await migrationTask.TestarConexaoAsync())
+        {
+            LoggingTask.RegistrarErro(new Exception("Falha na conexão"), "Program");
+            return;
+        }
+        
+        // ADICIONADO: Workflow completo
+        await ExecutarWorkflowCompleto(config, migrationTask);
+        
+        LoggingTask.RegistrarInfo("=== Workflow completo finalizado ===");
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "Program.Main");
+    }
+    finally
+    {
+        LoggingTask.FecharLogger();
+    }
+}
+
+private static async Task ExecutarWorkflowCompleto(Config config, MigrationTask migrationTask)
+{
+    var navigationTask = new NavigationTask();
+    var extractionTask = new ExtractionTask();
+    
+    foreach (var categoria in config.Categorias.Keys)
+    {
+        LoggingTask.RegistrarInfo($"Processando categoria: {categoria}");
+        
+        // 1. Coletar URLs
+        var urls = await navigationTask.ColetarUrlsCategoriaAsync(categoria);
+        LoggingTask.RegistrarInfo($"Coletadas {urls.Count} URLs");
+        
+        // 2. Extrair dados de cada URL
+        var noticias = new List<Noticia>();
+        
+        foreach (var url in urls.Take(10)) // Limitar para teste
+        {
+            try
+            {
+                var noticia = await extractionTask.ExtrairNoticiaAsync(url, categoria);
+                if (noticia != null)
+                {
+                    noticias.Add(noticia);
+                }
+                
+                await Task.Delay(1000); // Evitar sobrecarga
+            }
+            catch (Exception ex)
+            {
+                LoggingTask.RegistrarErro(ex, $"Erro ao extrair: {url}");
+            }
+        }
+        
+        // 3. Salvar no banco
+        if (noticias.Any())
+        {
+            await migrationTask.SalvarNoticiasAsync(noticias);
+            LoggingTask.RegistrarInfo($"Salvadas {noticias.Count} notícias no banco");
+        }
+        
+        await Task.Delay(2000); // Pausa entre categorias
+    }
+}
+```
+
+### Program.cs - Fase: Com Argumentos e Relatórios
+```csharp
+static async Task Main(string[] args)
+{
+    Config config = Config.Instancia;
+    LoggingTask.ConfigurarLogger();
+    
+    try
+    {
+        LoggingTask.RegistrarInfo("=== AdrenalineSpy Iniciado ===");
+        
+        var migrationTask = new MigrationTask();
+        
+        if (!await migrationTask.TestarConexaoAsync())
+        {
+            LoggingTask.RegistrarErro(new Exception("Falha na conexão"), "Program");
+            return;
+        }
+        
+        // ADICIONADO: Processar argumentos
+        if (args.Contains("--relatorio"))
+        {
+            await GerarRelatorio(migrationTask);
+        }
+        else if (args.Contains("--limpar-banco"))
+        {
+            await LimparBanco(migrationTask);
+        }
+        else
+        {
+            // Workflow normal
+            await ExecutarWorkflowCompleto(config, migrationTask);
+        }
+        
+        LoggingTask.RegistrarInfo("=== Execução finalizada ===");
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "Program.Main");
+    }
+    finally
+    {
+        LoggingTask.FecharLogger();
+    }
+}
+
+private static async Task GerarRelatorio(MigrationTask migrationTask)
+{
+    LoggingTask.RegistrarInfo("Gerando relatório do banco de dados...");
+    
+    var estatisticas = await migrationTask.ObterEstatisticasAsync();
+    
+    Console.WriteLine("\n📊 RELATÓRIO ADRENALINESPY");
+    Console.WriteLine($"📰 Total de notícias: {estatisticas.TotalNoticias}");
+    Console.WriteLine($"📅 Período: {estatisticas.DataMaisAntiga:dd/MM/yyyy} até {estatisticas.DataMaisRecente:dd/MM/yyyy}");
+    
+    Console.WriteLine("\n📈 Por categoria:");
+    foreach (var categoria in estatisticas.PorCategoria)
+    {
+        Console.WriteLine($"  • {categoria.Key}: {categoria.Value} notícias");
+    }
+    
+    LoggingTask.RegistrarInfo("Relatório gerado com sucesso");
+}
+
+private static async Task LimparBanco(MigrationTask migrationTask)
+{
+    Console.WriteLine("⚠️  Tem certeza que deseja limpar TODOS os dados? (s/N)");
+    var confirmacao = Console.ReadLine();
+    
+    if (confirmacao?.ToLower() == "s")
+    {
+        LoggingTask.RegistrarInfo("Limpando banco de dados...");
+        await migrationTask.LimparTodosDadosAsync();
+        Console.WriteLine("✅ Banco de dados limpo");
+    }
+    else
+    {
+        Console.WriteLine("❌ Operação cancelada");
+    }
+}
+```
+
+### Program.cs - Fase: Produção com Health Checks
+```csharp
+static async Task Main(string[] args)
+{
+    Config config = Config.Instancia;
+    LoggingTask.ConfigurarLogger();
+    
+    try
+    {
+        LoggingTask.RegistrarInfo("=== AdrenalineSpy Iniciado ===");
+        
+        // ADICIONADO: Health checks completos
+        if (!await RealizarHealthChecks())
+        {
+            LoggingTask.RegistrarErro(new Exception("Health checks falharam"), "Program");
+            return;
+        }
+        
+        var migrationTask = new MigrationTask();
+        
+        // Executar com monitoramento
+        await ExecutarComMonitoramento(config, migrationTask);
+        
+        LoggingTask.RegistrarInfo("=== Execução finalizada com sucesso ===");
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "Program.Main");
+        await NotificarErroProducao(ex);
+    }
+    finally
+    {
+        LoggingTask.FecharLogger();
+    }
+}
+
+private static async Task<bool> RealizarHealthChecks()
+{
+    LoggingTask.RegistrarInfo("Realizando health checks...");
+    
+    // 1. Conexão com internet
+    if (!await ValidarInternet())
+    {
+        LoggingTask.RegistrarErro(new Exception("Sem internet"), "HealthCheck");
+        return false;
+    }
+    
+    // 2. Site disponível
+    var config = Config.Instancia;
+    if (!await ValidarSite(config.Navegacao.UrlBase))
+    {
+        LoggingTask.RegistrarErro(new Exception("Site indisponível"), "HealthCheck");
+        return false;
+    }
+    
+    // 3. Banco de dados
+    var migrationTask = new MigrationTask();
+    if (!await migrationTask.TestarConexaoAsync())
+    {
+        LoggingTask.RegistrarErro(new Exception("Banco indisponível"), "HealthCheck");
+        return false;
+    }
+    
+    // 4. Espaço em disco
+    if (!ValidarEspacoDisco())
+    {
+        LoggingTask.RegistrarErro(new Exception("Espaço em disco insuficiente"), "HealthCheck");
+        return false;
+    }
+    
+    LoggingTask.RegistrarInfo("✅ Todos os health checks passaram");
+    return true;
+}
+
+private static async Task ExecutarComMonitoramento(Config config, MigrationTask migrationTask)
+{
+    var inicio = DateTime.Now;
+    var contadorSucesso = 0;
+    var contadorErros = 0;
+    
+    try
+    {
+        await ExecutarWorkflowCompleto(config, migrationTask);
+        contadorSucesso++;
+    }
+    catch (Exception ex)
+    {
+        contadorErros++;
+        throw;
+    }
+    finally
+    {
+        var duracao = DateTime.Now - inicio;
+        
+        LoggingTask.RegistrarInfo($"📊 Execução finalizada - Duração: {duracao:mm\\:ss}");
+        LoggingTask.RegistrarInfo($"✅ Sucessos: {contadorSucesso} | ❌ Erros: {contadorErros}");
+        
+        // Salvar métricas no banco
+        await migrationTask.SalvarMetricasExecucaoAsync(duracao, contadorSucesso, contadorErros);
+    }
+}
+```
+
+### Exemplos de Uso da Linha de Comando
+
+```bash
+# Execução normal (workflow completo)
+dotnet run
+
+# Gerar relatório do banco
+dotnet run -- --relatorio
+
+# Limpar todos os dados
+dotnet run -- --limpar-banco
+
+# Categoria específica
+dotnet run -- --categoria=games
+
+# Modo de teste (apenas 5 notícias por categoria)
+dotnet run -- --teste
+```
+
+### ⚠️ Ordem de Implementação Recomendada
+
+1. **Testar conexão** - Verificar se banco está acessível
+2. **Salvar URLs** - Persistir URLs coletadas
+3. **Salvar notícias** - Dados estruturados extraídos
+4. **Adicionar relatórios** - Visualizar dados salvos
+5. **Health checks** - Monitoramento robusto
+6. **Métricas** - Acompanhar performance
+
+### 💡 Próxima Evolução
+
+Após dominar o banco de dados, você pode implementar **exportação** (Excel, CSV, PDF) e **agendamento** (Quartz.NET) para automatizar completamente o processo.
+
+---
+
 ## Métodos Mais Usados
 
 ### Entity Framework Core - CRUD Básico

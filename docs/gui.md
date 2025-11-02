@@ -601,6 +601,413 @@ public class NoticiaViewModel : INotifyPropertyChanged
 }
 ```
 
+---
+
+## Como Adicionar no Program.cs
+
+### Transformando Program.cs em Aplicação com Interface
+
+A **GUI** é a **camada final** do AdrenalineSpy - oferecendo uma interface amigável para usuários que não querem usar linha de comando. O Program.cs evolui para detectar automaticamente o modo de execução.
+
+### Program.cs - Fase: Detecção Automática de Modo
+```csharp
+using System.Windows;
+
+[STAThread]
+static async Task Main(string[] args)
+{
+    Config config = Config.Instancia;
+    LoggingTask.ConfigurarLogger();
+    
+    try
+    {
+        LoggingTask.RegistrarInfo("=== AdrenalineSpy Iniciado ===");
+        
+        // ADICIONADO: Detectar modo de execução automaticamente
+        var modoExecucao = DetectarModoExecucao(args);
+        
+        LoggingTask.RegistrarInfo($"🎮 Modo detectado: {modoExecucao}");
+        
+        switch (modoExecucao)
+        {
+            case ModoExecucao.GUI:
+                await ExecutarModoGUI(config, args);
+                break;
+                
+            case ModoExecucao.Scheduler:
+                await ExecutarModoScheduler(config, args);
+                break;
+                
+            case ModoExecucao.Console:
+                await ExecutarModoConsole(config, args);
+                break;
+                
+            case ModoExecucao.Service:
+                await ExecutarComoServico(args);
+                break;
+        }
+        
+        LoggingTask.RegistrarInfo("=== AdrenalineSpy Finalizado ===");
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "Program.Main");
+        
+        // Mostrar erro na GUI se aplicável
+        if (Application.Current != null)
+        {
+            MessageBox.Show($"Erro fatal: {ex.Message}", "AdrenalineSpy", 
+                          MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        
+        await NotificarErroPorEmail(ex, config);
+    }
+    finally
+    {
+        LoggingTask.FecharLogger();
+    }
+}
+
+private static ModoExecucao DetectarModoExecucao(string[] args)
+{
+    // Forçar modo específico via argumentos
+    if (args.Contains("--gui")) return ModoExecucao.GUI;
+    if (args.Contains("--scheduler")) return ModoExecucao.Scheduler;
+    if (args.Contains("--console")) return ModoExecucao.Console;
+    if (args.Contains("--service")) return ModoExecucao.Service;
+    
+    // Detecção automática
+    if (Environment.UserInteractive && !Console.IsInputRedirected)
+    {
+        // Está em ambiente interativo - verificar se há desktop
+        if (Environment.GetEnvironmentVariable("SESSIONNAME")?.Contains("Console") != true)
+        {
+            return ModoExecucao.GUI; // Desktop disponível - usar GUI
+        }
+    }
+    
+    return ModoExecucao.Console; // Fallback para console
+}
+
+public enum ModoExecucao
+{
+    GUI,
+    Console, 
+    Scheduler,
+    Service
+}
+```
+
+### Program.cs - Implementação do Modo GUI
+```csharp
+private static async Task ExecutarModoGUI(Config config, string[] args)
+{
+    LoggingTask.RegistrarInfo("🖥️ Iniciando interface gráfica...");
+    
+    try
+    {
+        // Inicializar aplicação WPF
+        var app = new Application();
+        app.ShutdownMode = ShutdownMode.OnMainWindowClose;
+        
+        // ADICIONADO: Configurar GUI com acesso ao backend
+        var mainWindow = new MainWindow(config);
+        
+        // Configurar eventos da aplicação
+        app.Startup += (s, e) => LoggingTask.RegistrarInfo("✅ GUI inicializada");
+        app.Exit += (s, e) => LoggingTask.RegistrarInfo("🚪 GUI fechada");
+        
+        // Tratamento de exceções não capturadas na GUI
+        app.DispatcherUnhandledException += async (s, e) =>
+        {
+            LoggingTask.RegistrarErro(e.Exception, "GUI - Exceção não capturada");
+            
+            var result = MessageBox.Show(
+                $"Erro inesperado: {e.Exception.Message}\n\nDeseja continuar?",
+                "AdrenalineSpy - Erro", 
+                MessageBoxButton.YesNo, 
+                MessageBoxImage.Warning);
+            
+            if (result == MessageBoxResult.Yes)
+            {
+                e.Handled = true; // Continuar execução
+            }
+            else
+            {
+                await NotificarErroPorEmail(e.Exception, config);
+            }
+        };
+        
+        // Executar aplicação GUI
+        app.Run(mainWindow);
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "Erro ao inicializar GUI");
+        
+        // Fallback para console se GUI falhar
+        Console.WriteLine("❌ Erro ao inicializar interface gráfica");
+        Console.WriteLine("🔄 Executando em modo console...");
+        
+        await ExecutarModoConsole(config, args);
+    }
+}
+
+private static async Task ExecutarModoConsole(Config config, string[] args)
+{
+    LoggingTask.RegistrarInfo("💻 Executando em modo console");
+    
+    // Lógica já implementada anteriormente
+    if (args.Contains("--scheduler"))
+    {
+        await IniciarAgendadorCompleto(config, args);
+    }
+    else
+    {
+        await ExecutarWorkflowCompleto(config);
+    }
+}
+
+private static async Task ExecutarModoScheduler(Config config, string[] args)
+{
+    LoggingTask.RegistrarInfo("⏰ Executando em modo agendador");
+    
+    // Lógica já implementada no Quartz.NET
+    await IniciarAgendadorCompleto(config, args);
+}
+```
+
+### Program.cs - GUI Avançada com Sistema Híbrido
+```csharp
+private static async Task ExecutarModoGUI(Config config, string[] args)
+{
+    LoggingTask.RegistrarInfo("🖥️ Iniciando GUI avançada...");
+    
+    var app = new Application();
+    
+    // ADICIONADO: Sistema híbrido - GUI + Background Scheduler
+    bool habilitarSchedulerBackground = config.GUI.SchedulerBackground;
+    
+    var mainWindow = new MainWindow(config);
+    
+    // Integrar scheduler em background se habilitado
+    if (habilitarSchedulerBackground)
+    {
+        LoggingTask.RegistrarInfo("🔄 Habilitando scheduler em background na GUI");
+        
+        var schedulerBackground = new BackgroundSchedulerService(config);
+        
+        // Conectar eventos do scheduler com a GUI
+        schedulerBackground.JobExecuted += (sender, result) =>
+        {
+            // Atualizar GUI com resultados do job
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                mainWindow.AtualizarResultadosExecucao(result);
+            });
+        };
+        
+        schedulerBackground.JobFailed += (sender, error) =>
+        {
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                mainWindow.ExibirErroExecucao(error);
+            });
+        };
+        
+        // Iniciar scheduler em background
+        await schedulerBackground.IniciarAsync();
+        
+        // Parar scheduler ao fechar GUI
+        app.Exit += async (s, e) =>
+        {
+            LoggingTask.RegistrarInfo("🛑 Parando scheduler background...");
+            await schedulerBackground.PararAsync();
+        };
+    }
+    
+    // ADICIONADO: Menu de contexto na bandeja do sistema
+    if (config.GUI.MinimizarParaBandeja)
+    {
+        var trayIcon = new TrayIconService(mainWindow);
+        trayIcon.Configurar();
+    }
+    
+    // ADICIONADO: Verificação de atualizações na inicialização
+    if (config.GUI.VerificarAtualizacoes)
+    {
+        _ = Task.Run(async () =>
+        {
+            await VerificarAtualizacoes(mainWindow);
+        });
+    }
+    
+    app.Run(mainWindow);
+}
+
+private static async Task VerificarAtualizacoes(MainWindow mainWindow)
+{
+    try
+    {
+        LoggingTask.RegistrarInfo("🔍 Verificando atualizações...");
+        
+        // Simular verificação de atualizações
+        await Task.Delay(3000);
+        
+        // Exibir na GUI se houver atualizações
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            mainWindow.ExibirNotificacaoAtualizacao("Nova versão disponível!");
+        });
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "Erro ao verificar atualizações");
+    }
+}
+```
+
+### Program.cs - Modo Kiosk para Monitoramento
+```csharp
+private static async Task ExecutarModoKiosk(Config config, string[] args)
+{
+    LoggingTask.RegistrarInfo("📺 Iniciando modo Kiosk (monitoramento)...");
+    
+    var app = new Application();
+    
+    // ADICIONADO: Interface de monitoramento em tela cheia
+    var kioskWindow = new KioskWindow(config);
+    
+    // Configurações de kiosk
+    kioskWindow.WindowState = WindowState.Maximized;
+    kioskWindow.WindowStyle = WindowStyle.None;
+    kioskWindow.Topmost = true;
+    kioskWindow.ResizeMode = ResizeMode.NoResize;
+    
+    // ADICIONADO: Atualização automática de dados
+    var timer = new DispatcherTimer
+    {
+        Interval = TimeSpan.FromSeconds(30)
+    };
+    
+    timer.Tick += async (s, e) =>
+    {
+        await kioskWindow.AtualizarDadosAsync();
+    };
+    
+    timer.Start();
+    
+    // ADICIONADO: Sair do kiosk com combinação de teclas
+    kioskWindow.KeyDown += (s, e) =>
+    {
+        if (e.Key == Key.Escape && 
+            (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+        {
+            timer.Stop();
+            kioskWindow.Close();
+        }
+    };
+    
+    LoggingTask.RegistrarInfo("✅ Modo Kiosk iniciado - CTRL+ESC para sair");
+    
+    app.Run(kioskWindow);
+}
+```
+
+### Exemplos de Uso da Linha de Comando
+
+```bash
+# Detectar automaticamente o melhor modo
+dotnet run
+
+# Forçar modo GUI
+dotnet run -- --gui
+
+# GUI com scheduler em background
+dotnet run -- --gui --scheduler-background
+
+# Modo console tradicional
+dotnet run -- --console
+
+# Modo Kiosk (monitoramento)
+dotnet run -- --kiosk
+
+# Configurar GUI como aplicação padrão
+dotnet run -- --set-default-gui
+
+# GUI com tema escuro
+dotnet run -- --gui --tema=escuro
+```
+
+### Integração com Todos os Componentes Anteriores
+
+A GUI agora pode:
+
+✅ **Controlar Playwright** - Iniciar/parar scraping com interface visual  
+✅ **Monitorar ORM** - Ver dados em tempo real, estatísticas do banco  
+✅ **Gerenciar Quartz** - Configurar agendamentos pela interface  
+✅ **Visualizar Logs** - Serilog integrado com painéis visuais  
+✅ **Exportar dados** - Excel, CSV, PDF com um clique  
+✅ **Configurar Email** - Teste de conectividade, envio manual  
+✅ **APIs REST** - Monitor de saúde, teste de endpoints  
+
+### Estrutura Final do Program.cs
+```csharp
+// Program.cs - VERSÃO FINAL COMPLETA
+[STAThread]
+static async Task Main(string[] args)
+{
+    // 1. Inicialização
+    Config config = Config.Instancia;
+    LoggingTask.ConfigurarLogger();
+    
+    try
+    {
+        // 2. Detecção automática de modo
+        var modo = DetectarModoExecucao(args);
+        
+        // 3. Execução conforme modo detectado
+        await ExecutarConforme(modo, config, args);
+    }
+    catch (Exception ex)
+    {
+        await TratarErroGlobal(ex, config);
+    }
+    finally
+    {
+        LoggingTask.FecharLogger();
+    }
+}
+```
+
+### 🎯 Evolução Completa do AdrenalineSpy
+
+O **Program.cs** agora representa a **evolução completa** de um simples console para um **sistema RPA profissional** com:
+
+1. ✅ **Console** - Execução manual e scripts
+2. ✅ **Scheduler** - Automação com Quartz.NET  
+3. ✅ **Service** - Serviço Windows para produção
+4. ✅ **GUI** - Interface amigável para usuários
+5. ✅ **Kiosk** - Monitoramento em tela cheia
+6. ✅ **Híbrido** - Combinações flexíveis de modos
+
+### 🚀 Resultado Final
+
+O AdrenalineSpy evoluiu de um **Program.cs básico** para um **ecossistema RPA completo** que pode:
+
+- 🤖 **Executar automaticamente** (Quartz.NET)
+- 🖥️ **Interface amigável** (WPF/Avalonia)  
+- 📊 **Coletar dados** (Playwright)
+- 💾 **Persistir informações** (ORM + Docker)
+- 📈 **Gerar relatórios** (Excel, CSV, PDF)
+- 📧 **Enviar notificações** (MailKit)
+- 🔍 **Monitorar execução** (Serilog)
+- 🌐 **Integrar APIs** (RestSharp + JSON)
+
+**A documentação agora oferece um caminho completo** do básico ao avançado, com cada tecnologia mostrando **exatamente** como evoluir o Program.cs! 🎉
+
+---
+
 ## Métodos Mais Usados
 
 ### Inicializar Aplicação WPF

@@ -441,6 +441,151 @@ public static class ExcelReportTask
 }
 ```
 
+---
+
+## Como Adicionar no Program.cs
+
+### Program.cs - Fase: Adicionando Exportação Excel
+
+Após implementar **coleta** (Playwright) e **armazenamento** (ORM), você adiciona **exportação** como funcionalidade opcional.
+
+```csharp
+static async Task Main(string[] args)
+{
+    Config config = Config.Instancia;
+    LoggingTask.ConfigurarLogger();
+    
+    try
+    {
+        LoggingTask.RegistrarInfo("=== AdrenalineSpy Iniciado ===");
+        
+        // Workflow normal (coleta + banco)
+        var migrationTask = new MigrationTask();
+        await ExecutarWorkflowCompleto(config, migrationTask);
+        
+        // ADICIONADO: Exportar para Excel (opcional)
+        if (args.Contains("--export-excel") || args.Contains("--relatorio-excel"))
+        {
+            LoggingTask.RegistrarInfo("Gerando relatório Excel...");
+            
+            var exportTask = new ExportTask();
+            string arquivo = await exportTask.GerarRelatorioExcelAsync();
+            
+            LoggingTask.RegistrarInfo($"✅ Relatório Excel gerado: {arquivo}");
+            Console.WriteLine($"📊 Relatório Excel: {arquivo}");
+        }
+        
+        LoggingTask.RegistrarInfo("=== Execução finalizada ===");
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "Program.Main");
+    }
+    finally
+    {
+        LoggingTask.FecharLogger();
+    }
+}
+```
+
+### Program.cs - Múltiplos Formatos de Exportação
+```csharp
+static async Task Main(string[] args)
+{
+    Config config = Config.Instancia;
+    LoggingTask.ConfigurarLogger();
+    
+    try
+    {
+        // ... workflow normal ...
+        
+        // ADICIONADO: Múltiplos formatos
+        await ProcessarExportacoes(args);
+        
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "Program.Main");
+    }
+    finally
+    {
+        LoggingTask.FecharLogger();
+    }
+}
+
+private static async Task ProcessarExportacoes(string[] args)
+{
+    var exportTask = new ExportTask();
+    
+    // Excel detalhado
+    if (args.Contains("--excel"))
+    {
+        string arquivoExcel = await exportTask.GerarRelatorioExcelAsync();
+        Console.WriteLine($"📊 Excel: {arquivoExcel}");
+    }
+    
+    // CSV simples  
+    if (args.Contains("--csv"))
+    {
+        string arquivoCsv = await exportTask.GerarRelatorioCsvAsync();
+        Console.WriteLine($"📄 CSV: {arquivoCsv}");
+    }
+    
+    // PDF apresentável
+    if (args.Contains("--pdf"))
+    {
+        string arquivoPdf = await exportTask.GerarRelatorioPdfAsync();
+        Console.WriteLine($"📋 PDF: {arquivoPdf}");
+    }
+    
+    // Exportar tudo
+    if (args.Contains("--export-all"))
+    {
+        await ExportarTodosFormatos(exportTask);
+    }
+}
+
+private static async Task ExportarTodosFormatos(ExportTask exportTask)
+{
+    LoggingTask.RegistrarInfo("Exportando todos os formatos...");
+    
+    var tasks = new[]
+    {
+        exportTask.GerarRelatorioExcelAsync(),
+        exportTask.GerarRelatorioCsvAsync(),
+        exportTask.GerarRelatorioPdfAsync()
+    };
+    
+    var arquivos = await Task.WhenAll(tasks);
+    
+    Console.WriteLine("\n📁 Arquivos gerados:");
+    foreach (var arquivo in arquivos)
+    {
+        Console.WriteLine($"  • {arquivo}");
+    }
+}
+```
+
+### Exemplos de Uso
+```bash
+# Workflow normal (sem exportação)
+dotnet run
+
+# Com relatório Excel
+dotnet run -- --export-excel
+
+# Múltiplos formatos
+dotnet run -- --excel --csv --pdf
+
+# Exportar tudo
+dotnet run -- --export-all
+
+# Workflow + Excel automático
+dotnet run -- --categoria=tecnologia --excel
+```
+
+---
+
 ## Métodos Mais Usados
 
 ### Configurar Licença e Criar Planilha Básica

@@ -346,6 +346,171 @@ public static class ApiTask
     }
 }
 
+---
+```
+## Como Adicionar no Program.cs
+
+### Quando Usar APIs REST/JSON no AdrenalineSpy
+
+O **RestSharp + JSON** é usado principalmente para:
+- 🔧 **AutomationSettings.json** - Configurações já são JSON (Config.cs automatiza isso)
+- 🌐 **APIs externas** - Se precisar integrar com APIs de terceiros
+- 📊 **Logs estruturados** - Serilog pode usar JSON como output
+- 💾 **Backup de dados** - Exportar dados coletados em formato JSON
+
+### Program.cs - Fase Inicial (Sem APIs Externas)
+```csharp
+static void Main(string[] args)
+{
+    // 1. JSON já é usado automaticamente aqui
+    Config config = Config.Instancia; // ← Carrega AutomationSettings.json
+    
+    if (!config.Validar())
+    {
+        Console.WriteLine("❌ Configurações inválidas!");
+        return;
+    }
+    
+    LoggingTask.ConfigurarLogger();
+    
+    try
+    {
+        LoggingTask.RegistrarInfo("Aplicação iniciada");
+        
+        // Nesta fase, JSON é usado internamente pelo Config
+        // Não precisa de código REST ainda
+        
+        LoggingTask.RegistrarInfo("Aplicação finalizada");
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "Program.Main");
+    }
+    finally
+    {
+        LoggingTask.FecharLogger();
+    }
+}
+```
+
+### Program.cs - Evoluindo com APIs (Quando Necessário)
+```csharp
+static void Main(string[] args)
+{
+    Config config = Config.Instancia;
+    LoggingTask.ConfigurarLogger();
+    
+    try
+    {
+        LoggingTask.RegistrarInfo("Aplicação iniciada");
+        
+        // ADICIONADO: Inicializar ApiTask quando precisar de APIs
+        var apiTask = new ApiTask();
+        
+        // ADICIONADO: Testar conexão com APIs externas
+        bool apiDisponivel = await apiTask.TestarConexaoAsync();
+        
+        if (!apiDisponivel)
+        {
+            LoggingTask.RegistrarAviso("API externa indisponível - continuando sem integração");
+        }
+        
+        // Workflow principal...
+        await ExecutarWorkflow();
+        
+        LoggingTask.RegistrarInfo("Aplicação finalizada");
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "Program.Main");
+    }
+    finally
+    {
+        LoggingTask.FecharLogger();
+    }
+}
+```
+
+### Program.cs - Adicionando Exportação JSON
+```csharp
+static void Main(string[] args)
+{
+    Config config = Config.Instancia;
+    LoggingTask.ConfigurarLogger();
+    
+    try
+    {
+        LoggingTask.RegistrarInfo("Aplicação iniciada");
+        
+        // Executar coleta de dados...
+        var dadosColetados = await ExecutarColeta();
+        
+        // ADICIONADO: Exportar dados em JSON
+        if (args.Contains("--export-json"))
+        {
+            await ExportarDadosJson(dadosColetados);
+            LoggingTask.RegistrarInfo("Dados exportados para JSON");
+        }
+        
+        LoggingTask.RegistrarInfo("Aplicação finalizada");
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "Program.Main");
+    }
+    finally
+    {
+        LoggingTask.FecharLogger();
+    }
+}
+
+private static async Task ExportarDadosJson(List<Noticia> dados)
+{
+    string json = JsonConvert.SerializeObject(dados, Formatting.Indented);
+    string arquivo = $"dados_{DateTime.Now:yyyyMMdd_HHmmss}.json";
+    await File.WriteAllTextAsync(arquivo, json);
+}
+```
+
+### Métodos Auxiliares Recomendados
+```csharp
+private static async Task<bool> ValidarApiDisponibilidade()
+{
+    try
+    {
+        var client = new RestClient();
+        var request = new RestRequest("https://api.exemplo.com/status");
+        request.Timeout = TimeSpan.FromSeconds(5);
+        
+        var response = await client.ExecuteAsync(request);
+        return response.IsSuccessful;
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "Erro ao validar API");
+        return false;
+    }
+}
+
+private static void ConfigurarClienteRest()
+{
+    // Configuração global se usando várias APIs
+    var options = new RestClientOptions()
+    {
+        Timeout = TimeSpan.FromSeconds(30),
+        UserAgent = "AdrenalineSpy/1.0"
+    };
+}
+```
+
+### ⚠️ Importante
+- **JSON é usado automaticamente** pelo Config.cs (AutomationSettings.json)
+- **RestSharp só adicionar** se precisar de APIs externas específicas
+- **Não complique** - comece sem APIs, adicione conforme necessidade
+- **Sempre validar** se API está disponível antes de usar
+
+---
+
 ## Métodos Mais Usados
 
 ### Serializar JSON (Objeto → String)

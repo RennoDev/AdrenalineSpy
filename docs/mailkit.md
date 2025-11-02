@@ -310,6 +310,435 @@ Se você recebeu este email, as configurações estão funcionando corretamente!
         await client.DisconnectAsync(true);
     }
 }
+```
+---
+
+## Como Adicionar no Program.cs
+
+### Quando Usar Email no AdrenalineSpy
+
+O **MailKit** é usado para **notificações automáticas** do sistema RPA:
+- 📊 **Relatórios automáticos** - Enviar estatísticas diárias/semanais por email  
+- ⚠️ **Alertas de erro** - Notificar quando o scraping falha
+- ✅ **Confirmação de execução** - Confirmar que o workflow foi executado com sucesso
+- 📁 **Anexar relatórios** - Enviar arquivos Excel/PDF/CSV gerados
+
+### Program.cs - Fase: Notificações de Erro
+```csharp
+static async Task Main(string[] args)
+{
+    Config config = Config.Instancia;
+    LoggingTask.ConfigurarLogger();
+    
+    try
+    {
+        LoggingTask.RegistrarInfo("=== AdrenalineSpy Iniciado ===");
+        
+        // Workflow normal (coleta + banco + exportação)
+        await ExecutarWorkflowCompleto(config);
+        
+        LoggingTask.RegistrarInfo("=== Execução finalizada com sucesso ===");
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "Program.Main - Erro Fatal");
+        
+        // ADICIONADO: Notificar erro por email
+        await NotificarErroPorEmail(ex, config);
+        
+        Console.WriteLine($"❌ Erro fatal: {ex.Message}");
+    }
+    finally
+    {
+        LoggingTask.FecharLogger();
+    }
+}
+
+private static async Task NotificarErroPorEmail(Exception ex, Config config)
+{
+    try
+    {
+        if (config.Email.NotificarErros)
+        {
+            LoggingTask.RegistrarInfo("Enviando notificação de erro por email...");
+            
+            var emailTask = new EmailTask();
+            await emailTask.EnviarNotificacaoErroAsync(ex);
+            
+            LoggingTask.RegistrarInfo("✅ Notificação de erro enviada");
+        }
+    }
+    catch (Exception emailEx)
+    {
+        LoggingTask.RegistrarErro(emailEx, "Falha ao enviar email de erro");
+        // Não propagar erro de email - o erro original é mais importante
+    }
+}
+```
+
+### Program.cs - Fase: Relatórios Automáticos
+```csharp
+static async Task Main(string[] args)
+{
+    Config config = Config.Instancia;
+    LoggingTask.ConfigurarLogger();
+    
+    try
+    {
+        LoggingTask.RegistrarInfo("=== AdrenalineSpy Iniciado ===");
+        
+        // Validar se deve enviar relatório
+        bool enviarRelatorio = args.Contains("--relatorio-email") || 
+                              config.Email.RelatoriosAutomaticos;
+        
+        // Workflow principal
+        var resultados = await ExecutarWorkflowComMetricas(config);
+        
+        // ADICIONADO: Enviar relatório automático
+        if (enviarRelatorio)
+        {
+            await EnviarRelatorioAutomatico(resultados, config);
+        }
+        
+        LoggingTask.RegistrarInfo("=== Execução finalizada ===");
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "Program.Main");
+        await NotificarErroPorEmail(ex, config);
+    }
+    finally
+    {
+        LoggingTask.FecharLogger();
+    }
+}
+
+private static async Task<ResultadosExecucao> ExecutarWorkflowComMetricas(Config config)
+{
+    var inicio = DateTime.Now;
+    var resultados = new ResultadosExecucao { InicioExecucao = inicio };
+    
+    try
+    {
+        // Executar workflow normal
+        var migrationTask = new MigrationTask();
+        var navigationTask = new NavigationTask();
+        
+        foreach (var categoria in config.Categorias.Keys)
+        {
+            var urls = await navigationTask.ColetarUrlsCategoriaAsync(categoria);
+            // ... processar categoria ...
+            
+            resultados.CategoriasProcessadas.Add(categoria, urls.Count);
+        }
+        
+        resultados.Status = "Sucesso";
+    }
+    catch (Exception ex)
+    {
+        resultados.Status = "Erro";
+        resultados.ErroDetalhes = ex.Message;
+        throw;
+    }
+    finally
+    {
+        resultados.FimExecucao = DateTime.Now;
+        resultados.DuracaoTotal = resultados.FimExecucao - resultados.InicioExecucao;
+    }
+    
+    return resultados;
+}
+
+private static async Task EnviarRelatorioAutomatico(ResultadosExecucao resultados, Config config)
+{
+    try
+    {
+        LoggingTask.RegistrarInfo("Gerando e enviando relatório automático...");
+        
+        var emailTask = new EmailTask();
+        
+        // Gerar arquivos de relatório se necessário
+        List<string> anexos = await GerarAnexosRelatorio(config, resultados);
+        
+        // Enviar email com relatório
+        await emailTask.EnviarRelatorioExecucaoAsync(resultados, anexos);
+        
+        LoggingTask.RegistrarInfo($"✅ Relatório enviado para {config.Email.DestinatariosRelatorio.Count} destinatários");
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "Erro ao enviar relatório automático");
+    }
+}
+
+private static async Task<List<string>> GerarAnexosRelatorio(Config config, ResultadosExecucao resultados)
+{
+    var anexos = new List<string>();
+    
+    if (config.Email.AnexarExcel)
+    {
+        var exportTask = new ExportTask();
+        string arquivoExcel = await exportTask.GerarRelatorioExcelAsync();
+        anexos.Add(arquivoExcel);
+    }
+    
+    if (config.Email.AnexarLogs && File.Exists("logs/sucesso.log"))
+    {
+        anexos.Add("logs/sucesso.log");
+    }
+    
+    return anexos;
+}
+```
+
+### Program.cs - Fase: Notificações Inteligentes
+```csharp
+static async Task Main(string[] args)
+{
+    Config config = Config.Instancia;
+    LoggingTask.ConfigurarLogger();
+    
+    try
+    {
+        LoggingTask.RegistrarInfo("=== AdrenalineSpy Iniciado ===");
+        
+        // ADICIONADO: Verificar se deve notificar início
+        if (config.Email.NotificarInicio && !args.Contains("--silencioso"))
+        {
+            await NotificarInicioExecucao(config);
+        }
+        
+        var resultados = await ExecutarWorkflowComMetricas(config);
+        
+        // ADICIONADO: Decisões inteligentes de notificação
+        await ProcessarNotificacoes(resultados, config, args);
+        
+        LoggingTask.RegistrarInfo("=== Execução finalizada ===");
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "Program.Main");
+        await NotificarErroPorEmail(ex, config);
+    }
+    finally
+    {
+        LoggingTask.FecharLogger();
+    }
+}
+
+private static async Task NotificarInicioExecucao(Config config)
+{
+    try
+    {
+        LoggingTask.RegistrarInfo("Enviando notificação de início...");
+        
+        var emailTask = new EmailTask();
+        await emailTask.EnviarNotificacaoInicioAsync();
+        
+        LoggingTask.RegistrarInfo("✅ Notificação de início enviada");
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "Erro ao enviar notificação de início");
+        // Não bloquear execução por falha de email
+    }
+}
+
+private static async Task ProcessarNotificacoes(ResultadosExecucao resultados, Config config, string[] args)
+{
+    var emailTask = new EmailTask();
+    
+    // Notificar sucesso (se configurado)
+    if (resultados.Status == "Sucesso" && config.Email.NotificarSucesso)
+    {
+        LoggingTask.RegistrarInfo("Enviando notificação de sucesso...");
+        await emailTask.EnviarNotificacaoSucessoAsync(resultados);
+    }
+    
+    // Relatório detalhado (se solicitado)
+    if (args.Contains("--relatorio-detalhado"))
+    {
+        LoggingTask.RegistrarInfo("Enviando relatório detalhado...");
+        var anexos = await GerarAnexosRelatorio(config, resultados);
+        await emailTask.EnviarRelatorioDetalhadoAsync(resultados, anexos);
+    }
+    
+    // Verificar se deve notificar administradores sobre métricas
+    if (resultados.DuracaoTotal > TimeSpan.FromMinutes(config.Email.LimiteTempoNotificacao))
+    {
+        LoggingTask.RegistrarAviso($"Execução demorou {resultados.DuracaoTotal:mm\\:ss} - notificando administradores");
+        await emailTask.NotificarExecucaoLentaAsync(resultados);
+    }
+}
+```
+
+### Program.cs - Fase: Agendamento com Notificações
+```csharp
+static async Task Main(string[] args)
+{
+    Config config = Config.Instancia;
+    LoggingTask.ConfigurarLogger();
+    
+    try
+    {
+        LoggingTask.RegistrarInfo("=== AdrenalineSpy Iniciado ===");
+        
+        // Verificar modo de execução
+        if (args.Contains("--scheduler") || args.Contains("--agendado"))
+        {
+            LoggingTask.RegistrarInfo("Modo agendado detectado - configurando notificações especiais");
+            
+            // ADICIONADO: Notificações específicas para execução agendada
+            await ExecutarModoAgendado(config);
+        }
+        else
+        {
+            // Execução manual normal
+            await ExecutarModoManual(config, args);
+        }
+        
+        LoggingTask.RegistrarInfo("=== Execução finalizada ===");
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "Program.Main");
+        
+        // Notificação de erro diferenciada para modo agendado
+        bool modoAgendado = Environment.GetCommandLineArgs().Contains("--scheduler");
+        await NotificarErro(ex, config, modoAgendado);
+    }
+    finally
+    {
+        LoggingTask.FecharLogger();
+    }
+}
+
+private static async Task ExecutarModoAgendado(Config config)
+{
+    var emailTask = new EmailTask();
+    
+    try
+    {
+        // Execução silenciosa, notificar apenas se houver problemas ou conforme configurado
+        var resultados = await ExecutarWorkflowComMetricas(config);
+        
+        // Notificar apenas se configurado para execução agendada
+        if (config.Email.NotificarExecucoesAgendadas)
+        {
+            await emailTask.EnviarRelatorioAgendadoAsync(resultados);
+        }
+        
+        // Sempre notificar se houve problemas
+        if (resultados.CategoriasComErro.Any())
+        {
+            await emailTask.NotificarProblemasExecucaoAsync(resultados);
+        }
+    }
+    catch (Exception ex)
+    {
+        await emailTask.EnviarNotificacaoErroAgendadoAsync(ex);
+        throw;
+    }
+}
+
+private static async Task ExecutarModoManual(Config config, string[] args)
+{
+    // Execução manual - mais verbosa, notificações opcionais
+    var resultados = await ExecutarWorkflowComMetricas(config);
+    await ProcessarNotificacoes(resultados, config, args);
+}
+
+private static async Task NotificarErro(Exception ex, Config config, bool modoAgendado)
+{
+    var emailTask = new EmailTask();
+    
+    if (modoAgendado)
+    {
+        // Erro em execução agendada - sempre notificar
+        await emailTask.EnviarNotificacaoErroAgendadoAsync(ex);
+    }
+    else if (config.Email.NotificarErros)
+    {
+        // Execução manual - notificar conforme configuração
+        await emailTask.EnviarNotificacaoErroAsync(ex);
+    }
+}
+```
+
+### Exemplos de Uso da Linha de Comando
+
+```bash
+# Execução normal (sem email)
+dotnet run
+
+# Com relatório por email
+dotnet run -- --relatorio-email
+
+# Relatório detalhado com anexos
+dotnet run -- --relatorio-detalhado
+
+# Modo silencioso (sem notificações de início)
+dotnet run -- --silencioso
+
+# Modo agendado (notificações especiais)
+dotnet run -- --scheduler
+
+# Forçar notificação mesmo em caso de sucesso
+dotnet run -- --notificar-sempre
+```
+
+### Classe de Modelo para Resultados
+```csharp
+public class ResultadosExecucao
+{
+    public DateTime InicioExecucao { get; set; }
+    public DateTime FimExecucao { get; set; }
+    public TimeSpan DuracaoTotal { get; set; }
+    public string Status { get; set; } = "Sucesso";
+    public string ErroDetalhes { get; set; }
+    
+    public Dictionary<string, int> CategoriasProcessadas { get; set; } = new();
+    public List<string> CategoriasComErro { get; set; } = new();
+    
+    public int TotalUrlsColetadas => CategoriasProcessadas.Values.Sum();
+    public int TotalNoticiasExtraidas { get; set; }
+    public int TotalNoticiasNovas { get; set; }
+}
+```
+
+### ⚠️ Configurações Importantes no AutomationSettings.json
+
+Certifique-se de configurar adequadamente:
+```json
+{
+  "Email": {
+    "NotificarErros": true,
+    "NotificarSucesso": false,
+    "NotificarInicio": false,
+    "RelatoriosAutomaticos": true,
+    "NotificarExecucoesAgendadas": true,
+    "LimiteTempoNotificacao": 30,
+    "AnexarExcel": true,
+    "AnexarLogs": false,
+    "DestinatariosRelatorio": ["gestor@empresa.com"],
+    "DestinatariosErro": ["dev@empresa.com", "ops@empresa.com"]
+  }
+}
+```
+
+### 💡 Boas Práticas de Integração
+
+1. **Sempre envolver em try/catch** - Falhas de email não devem quebrar o workflow
+2. **Configurar limites** - Evitar spam de notificações
+3. **Diferenciar tipos de execução** - Manual vs Agendada vs Teste
+4. **Anexar logs seletivamente** - Apenas quando necessário
+5. **Validar configurações** - Testar SMTP antes de usar em produção
+
+### 🔄 Próxima Evolução
+
+Após implementar notificações por email, o próximo passo é **Quartz.NET** para agendamento automático, criando um ciclo completo de automação com notificações.
+
+---
 
 ## Métodos Mais Usados
 

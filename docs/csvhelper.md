@@ -351,6 +351,35 @@ public class ResumoCSV
 }
 ```
 
+---
+
+## Como Adicionar no Program.cs
+
+### Program.cs - Exportação CSV Simples
+```csharp
+static async Task Main(string[] args)
+{
+    // ... workflow normal ...
+    
+    // ADICIONADO: CSV como alternativa ao Excel
+    if (args.Contains("--csv") || args.Contains("--export-simples"))
+    {
+        LoggingTask.RegistrarInfo("Gerando relatório CSV...");
+        
+        var exportTask = new ExportTask();
+        string arquivoCsv = await exportTask.GerarRelatorioCsvAsync();
+        
+        Console.WriteLine($"📄 CSV gerado: {arquivoCsv}");
+    }
+}
+```
+
+### Quando Usar CSV vs Excel
+- **CSV**: Exportação rápida, dados simples, integração com outros sistemas
+- **Excel**: Relatórios formatados, gráficos, análise visual
+
+---
+
 ## Métodos Mais Usados
 
 ### Escrever Lista de Objetos para CSV

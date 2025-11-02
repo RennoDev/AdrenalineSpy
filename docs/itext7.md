@@ -549,6 +549,42 @@ public static class PDFReportTask
 }
 ```
 
+---
+
+## Como Adicionar no Program.cs
+
+### Program.cs - Relatórios PDF Profissionais  
+```csharp
+static async Task Main(string[] args)
+{
+    // ... workflow normal ...
+    
+    // ADICIONADO: PDF para apresentações
+    if (args.Contains("--pdf") || args.Contains("--relatorio-apresentacao"))
+    {
+        LoggingTask.RegistrarInfo("Gerando relatório PDF...");
+        
+        var exportTask = new ExportTask();
+        string arquivoPdf = await exportTask.GerarRelatorioPdfAsync();
+        
+        Console.WriteLine($"📋 PDF gerado: {arquivoPdf}");
+        
+        // Abrir automaticamente (opcional)
+        if (args.Contains("--abrir"))
+        {
+            System.Diagnostics.Process.Start("explorer.exe", arquivoPdf);
+        }
+    }
+}
+```
+
+### Quando Usar PDF
+- **Relatórios executivos**: Apresentação para gestores
+- **Documentação**: Registros permanentes
+- **Compartilhamento**: Formato universal
+
+---
+
 ## Métodos Mais Usados
 
 ### Criar Documento PDF Básico

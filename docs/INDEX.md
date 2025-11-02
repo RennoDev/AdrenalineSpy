@@ -20,6 +20,7 @@ O **AdrenalineSpy** é um projeto educacional que demonstra todas as ferramentas
 
 ### 🏗️ **Fundação (Leia Primeiro)**
 - **[Começando](comecando.md)** - 🎯 Ordem correta de estudos + primeiros passos
+- **[Program.cs](program.md)** - Como evoluir o ponto de entrada gradualmente (ESSENCIAL)
 - **[Configuração](configuracao.md)** - AutomationSettings.json + Config.cs (ESSENCIAL)
 - **[Arquitetura de Código](arquitetura-codigo.md)** - Padrão Program → Workflow → Tasks
 - **[Git/GitHub/GitLab](git-github-gitlab.md)** - Versionamento e colaboração

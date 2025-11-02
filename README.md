@@ -169,9 +169,10 @@ exports/
 ## 📚 Documentação Completa
 
 ### 🚀 **Primeiros Passos**
-1. **[Quick Start](docs/quickstart.md)** - Tutorial de 10 minutos
-2. **[Arquitetura do Código](docs/arquitetura-codigo.md)** - Padrões e organização
-3. **[Git/GitHub/GitLab](docs/git-github-gitlab.md)** - Controle de versão
+1. **[Quick Start](docs/comecando.md)** - Tutorial de 10 minutos para iniciantes
+2. **[Program.cs](docs/program.md)** - Como evoluir o ponto de entrada (ESSENCIAL)
+3. **[Arquitetura do Código](docs/arquitetura-codigo.md)** - Padrões e organização
+4. **[Git/GitHub](docs/git-github.md)** - Controle de versão e colaboração
 
 ### 🌐 **Automação Web**
 4. **[Playwright](docs/playwright.md)** - Web scraping principal
