@@ -1,23 +1,41 @@
-﻿// Carregar configurações
-Config config = Config.Instancia;
+﻿using AdrenalineSpy;
 
-// Validar
-if (!config.Validar() || config == null)
+namespace AdrenalineSpy
 {
-    Console.WriteLine("❌ Configurações inválidas ou não carregadas!");
-    return;
-}
+    class Program
+    {
+        static void Main(string[] args)
+        {
+            // 1. Carregar configurações
+            Config config = Config.Instancia;
 
-// Usar em qualquer lugar
-Console.WriteLine($"URL Base: {config.Navegacao.UrlBase}\n");
-Console.WriteLine($"Banco: {config.Database.NomeBanco}\n");
+            if (!config.Validar())
+            {
+                Console.WriteLine("❌ Configurações inválidas!");
+                return;
+            }
 
-// Obter connection string
-string connectionString = config.ObterConnectionString();
-Console.WriteLine($"Connection String: {connectionString}\n");
+            // 2. Configurar logger
+            LoggingTask.ConfigurarLogger();
 
-// Acessar categorias
-foreach (var categoria in config.Categorias)
-{
-    Console.WriteLine($"Categoria: {categoria.Key} → {categoria.Value}\n");
+            try
+            {
+                // 3. Usar logging
+                LoggingTask.RegistrarInfo("=== Aplicação Iniciada ===");
+
+                // Seu código aqui...
+
+                LoggingTask.RegistrarInfo("=== Aplicação Finalizada ===");
+            }
+            catch (Exception ex)
+            {
+                LoggingTask.RegistrarErro(ex, "Program.Main");
+            }
+            finally
+            {
+                // 4. SEMPRE fechar
+                LoggingTask.FecharLogger();
+            }
+        }
+    }
 }
