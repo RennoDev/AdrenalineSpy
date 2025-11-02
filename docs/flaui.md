@@ -1,883 +1,680 @@
-# FlaUI - Automação Desktop Windows
+# FlaUI - Automação de Interface Windows
 
-## Índice
-1. [Introdução](#introdução)
-2. [Instalação](#instalação)
-3. [Conceitos Básicos](#conceitos-básicos)
-4. [Primeiros Passos](#primeiros-passos)
-5. [Encontrar Elementos](#encontrar-elementos)
-6. [Interações](#interações)
-7. [Propriedades](#propriedades)
-8. [Padrões de Controle](#padrões-de-controle)
-9. [Exemplos Práticos](#exemplos-práticos)
-10. [Boas Práticas](#boas-práticas)
+## O que é FlaUI
 
----
+**FlaUI** é uma biblioteca .NET para automação de interfaces gráficas Windows (desktop apps), usando tecnologias de acessibilidade do Windows.
 
-## Introdução
+**Onde é usado no AdrenalineSpy:**
+- Automatizar browsers alternativos caso Playwright falhe
+- Interagir com janelas de sistema (Windows Explorer, diálogos)
+- Controlar aplicações desktop que complementam o scraping
+- Automatizar notificações do Windows (Action Center)
+- Backup de automação quando a interface web não responde
+- Controlar aplicações de terceiros (editores, clientes FTP, etc.)
 
-**FlaUI** é uma biblioteca .NET para automação de aplicações desktop Windows, baseada na tecnologia **UI Automation** da Microsoft.
+⚠️ **IMPORTANTE**: FlaUI funciona apenas no Windows e requer UI Automation habilitado no sistema.
 
-### Vantagens
-- ✅ Suporta WPF, WinForms, Win32, UWP
-- ✅ Acesso a elementos nativos da interface
-- ✅ Não requer modificação da aplicação
-- ✅ API fluente e intuitiva
-- ✅ Inspeção de árvore de elementos
-- ✅ Captura de screenshots
+## Como Instalar
 
-### Tecnologias Suportadas
-- **UIA3**: Windows 10/11 (recomendado)
-- **UIA2**: Windows 7/8
-- **Mixed**: Combinação de ambos
+### 1. Instalar Pacotes FlaUI
 
----
-
-## Instalação
-
-```bash
-# Pacote principal (UIA3 para Windows 10/11)
-dotnet add package FlaUI.UIA3
-
-# Ou UIA2 para Windows 7/8
-dotnet add package FlaUI.UIA2
-
-# Core (geralmente incluído automaticamente)
+```powershell
 dotnet add package FlaUI.Core
+dotnet add package FlaUI.UIA3
 ```
 
----
+### 2. Verificar .csproj
 
-## Conceitos Básicos
-
-### Hierarquia de Objetos
-
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <PackageReference Include="FlaUI.Core" Version="4.0.0" />
+    <PackageReference Include="FlaUI.UIA3" Version="4.0.0" />
+  </ItemGroup>
+</Project>
 ```
-Application
-  └── MainWindow
-       └── ControlType (Button, TextBox, etc)
-            └── Patterns (InvokePattern, ValuePattern, etc)
+
+### 3. Verificar UI Automation (Windows)
+
+```powershell
+# Verificar se UI Automation está habilitado
+Get-Service -Name "UI0Detect" | Select-Object Status, StartType
 ```
 
-### Automation Types
+Se não estiver executando:
+```powershell
+# Habilitar UI Automation (executar como Administrador)
+Set-Service -Name "UI0Detect" -StartupType Automatic
+Start-Service -Name "UI0Detect"
+```
 
-- **UIA3**: Mais moderno, melhor performance
-- **UIA2**: Compatibilidade com sistemas antigos
+## Implementar no AutomationSettings.json
 
-### Control Types
+Adicione configurações de automação desktop na raiz do JSON:
 
-Tipos de controles Windows:
-- `Button`, `TextBox`, `ComboBox`
-- `ListBox`, `TreeView`, `DataGrid`
-- `Menu`, `MenuItem`, `Tab`
-- `Window`, `Pane`, `Group`
-- E muito mais...
+```json
+{
+  "Navegacao": {
+    "UrlBase": "https://www.adrenaline.com.br",
+    "DelayEntrePaginas": 2000
+  },
+  "AutomacaoDesktop": {
+    "HabilitarFlaUI": true,
+    "TimeoutPadrao": 30000,
+    "DelayEntreAcoes": 500,
+    "TentativasMaximas": 3,
+    "CapturarScreenshots": true,
+    "DiretorioScreenshots": "screenshots/",
+    "ConfiguracaoBrowser": {
+      "BrowserAlternativo": "chrome.exe",
+      "ArgumentosLancamento": "--start-maximized --disable-web-security",
+      "TimeoutLancamento": 10000
+    },
+    "ConfiguracaoSistema": {
+      "AutomatizarNotificacoes": false,
+      "InteragirActionCenter": false,
+      "GerenciarArquivos": true,
+      "TimeoutJanelaSistema": 15000
+    },
+    "ElementosComuns": {
+      "SeletorBotaoOk": "Button[@Name='OK']",
+      "SeletorBotaoCancelar": "Button[@Name='Cancelar']",
+      "SeletorCaixaTexto": "Edit[@AutomationId='textBox']",
+      "SeletorJanelaPrincipal": "Window[@ClassName='Chrome_WidgetWin_1']"
+    }
+  },
+  "Database": {
+    "ConnectionString": "Server=localhost;Database=AdrenalineSpy;..."
+  },
+  "Logging": {
+    "Nivel": "Information",
+    "CaminhoArquivo": "logs/adrenaline-spy.log"
+  }
+}
+```
 
----
+**Configurações específicas do FlaUI:**
+- **`HabilitarFlaUI`**: Liga/desliga automação desktop
+- **`ConfiguracaoBrowser`**: Para controlar browsers alternativos
+- **`ConfiguracaoSistema`**: Interação com Windows (notificações, arquivos)
+- **`ElementosComuns`**: Seletores reutilizáveis para elementos UI
 
-## Primeiros Passos
+## Implementar no Config.cs
 
-### Exemplo Básico - Calculadora do Windows
+Adicione classes de configuração para FlaUI:
+
+```csharp
+public class ConfiguracaoBrowserConfig
+{
+    public string BrowserAlternativo { get; set; } = "chrome.exe";
+    public string ArgumentosLancamento { get; set; } = "--start-maximized --disable-web-security";
+    public int TimeoutLancamento { get; set; } = 10000;
+}
+
+public class ConfiguracaoSistemaConfig
+{
+    public bool AutomatizarNotificacoes { get; set; } = false;
+    public bool InteragirActionCenter { get; set; } = false;
+    public bool GerenciarArquivos { get; set; } = true;
+    public int TimeoutJanelaSistema { get; set; } = 15000;
+}
+
+public class ElementosComunsConfig
+{
+    public string SeletorBotaoOk { get; set; } = "Button[@Name='OK']";
+    public string SeletorBotaoCancelar { get; set; } = "Button[@Name='Cancelar']";
+    public string SeletorCaixaTexto { get; set; } = "Edit[@AutomationId='textBox']";
+    public string SeletorJanelaPrincipal { get; set; } = "Window[@ClassName='Chrome_WidgetWin_1']";
+}
+
+public class AutomacaoDesktopConfig
+{
+    public bool HabilitarFlaUI { get; set; } = true;
+    public int TimeoutPadrao { get; set; } = 30000;
+    public int DelayEntreAcoes { get; set; } = 500;
+    public int TentativasMaximas { get; set; } = 3;
+    public bool CapturarScreenshots { get; set; } = true;
+    public string DiretorioScreenshots { get; set; } = "screenshots/";
+    public ConfiguracaoBrowserConfig ConfiguracaoBrowser { get; set; } = new();
+    public ConfiguracaoSistemaConfig ConfiguracaoSistema { get; set; } = new();
+    public ElementosComunsConfig ElementosComuns { get; set; } = new();
+}
+
+public class Config
+{
+    // ... propriedades existentes ...
+    public AutomacaoDesktopConfig AutomacaoDesktop { get; set; } = new();
+    
+    /// <summary>
+    /// Obtém caminho para screenshots do FlaUI
+    /// </summary>
+    public string ObterCaminhoScreenshot(string nomeArquivo)
+    {
+        Directory.CreateDirectory(AutomacaoDesktop.DiretorioScreenshots);
+        
+        var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+        var nomeComTimestamp = $"{timestamp}_{nomeArquivo}.png";
+        
+        return Path.Combine(AutomacaoDesktop.DiretorioScreenshots, nomeComTimestamp);
+    }
+
+    /// <summary>
+    /// Verifica se FlaUI está habilitado e disponível
+    /// </summary>
+    public bool FlaUIDisponivel()
+    {
+        try
+        {
+            return AutomacaoDesktop.HabilitarFlaUI && 
+                   Environment.OSVersion.Platform == PlatformID.Win32NT;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+}
+```
+
+## Montar nas Tasks
+
+Crie a classe `DesktopAutomationTask.cs` na pasta `Workflow/Tasks/`:
 
 ```csharp
 using FlaUI.Core;
 using FlaUI.Core.AutomationElements;
+using FlaUI.Core.Conditions;
+using FlaUI.Core.Definitions;
+using FlaUI.Core.Tools;
 using FlaUI.UIA3;
 using System.Diagnostics;
+using System.Drawing.Imaging;
 
-class Program
+namespace AdrenalineSpy.Workflow.Tasks;
+
+/// <summary>
+/// Gerencia automação de interfaces desktop Windows para o AdrenalineSpy
+/// </summary>
+public static class DesktopAutomationTask
 {
-    static void Main()
+    private static UIA3Automation? _automation;
+    private static readonly object _lock = new();
+
+    /// <summary>
+    /// Obtém instância singleton do UIA3Automation
+    /// </summary>
+    private static UIA3Automation ObterAutomation()
     {
-        // Iniciar aplicação
-        var app = Application.Launch("calc.exe");
-        
-        // Usar UIA3
-        using var automation = new UIA3Automation();
-        
-        // Obter janela principal
-        var window = app.GetMainWindow(automation);
-        Console.WriteLine($"Título: {window.Title}");
-        
-        // Encontrar botões por texto
-        var btn1 = window.FindFirstDescendant(cf => cf.ByText("Um"));
-        var btn2 = window.FindFirstDescendant(cf => cf.ByText("Dois"));
-        var btnPlus = window.FindFirstDescendant(cf => cf.ByText("Mais"));
-        var btnEquals = window.FindFirstDescendant(cf => cf.ByText("Igual a"));
-        
-        // Executar operação: 1 + 2 =
-        btn1?.Click();
-        btnPlus?.Click();
-        btn2?.Click();
-        btnEquals?.Click();
-        
-        // Ler resultado
-        var resultado = window.FindFirstDescendant(cf => cf.ByAutomationId("CalculatorResults"));
-        Console.WriteLine($"Resultado: {resultado?.Name}");
-        
-        // Fechar aplicação
-        app.Close();
-    }
-}
-```
-
-### Anexar a Aplicação em Execução
-
-```csharp
-// Por nome do processo
-var processes = Process.GetProcessesByName("notepad");
-if (processes.Length > 0)
-{
-    var app = Application.Attach(processes[0]);
-    // ... trabalhar com a aplicação
-}
-
-// Por PID
-var app = Application.Attach(12345);
-
-// Por título da janela
-using var automation = new UIA3Automation();
-var window = automation.GetDesktop().FindFirstChild(cf => cf.ByName("Sem título - Bloco de Notas"));
-```
-
----
-
-## Encontrar Elementos
-
-### Por Condições (Conditions)
-
-```csharp
-using FlaUI.Core.Definitions;
-
-// Por AutomationId (melhor prática)
-var element = window.FindFirstDescendant(cf => cf.ByAutomationId("txtUsername"));
-
-// Por Name/Texto
-var element = window.FindFirstDescendant(cf => cf.ByName("Salvar"));
-var element = window.FindFirstDescendant(cf => cf.ByText("Cancelar"));
-
-// Por ControlType
-var button = window.FindFirstDescendant(cf => cf.ByControlType(ControlType.Button));
-var textbox = window.FindFirstDescendant(cf => cf.ByControlType(ControlType.Edit));
-
-// Por ClassName
-var element = window.FindFirstDescendant(cf => cf.ByClassName("TextBox"));
-
-// Por múltiplas condições (AND)
-var element = window.FindFirstDescendant(cf => 
-    cf.ByControlType(ControlType.Button)
-      .And(cf.ByName("OK")));
-
-// Múltiplas condições (OR)
-var element = window.FindFirstDescendant(cf =>
-    cf.ByText("Salvar")
-      .Or(cf.ByText("Save")));
-```
-
-### FindAll vs FindFirst
-
-```csharp
-// Encontrar o primeiro
-var firstButton = window.FindFirstDescendant(cf => cf.ByControlType(ControlType.Button));
-
-// Encontrar todos
-var allButtons = window.FindAllDescendants(cf => cf.ByControlType(ControlType.Button));
-foreach (var button in allButtons)
-{
-    Console.WriteLine($"Botão: {button.Name}");
-}
-```
-
-### Busca em Profundidade
-
-```csharp
-// Buscar apenas filhos diretos
-var child = window.FindFirstChild(cf => cf.ByName("Panel"));
-
-// Buscar em toda a árvore (descendentes)
-var descendant = window.FindFirstDescendant(cf => cf.ByName("Botão"));
-
-// Limitar níveis de busca
-var element = window.FindFirstDescendant(cf => 
-    cf.ByName("Elemento"), 
-    maxDepth: 5);
-```
-
-### XPath (experimental)
-
-```csharp
-var element = window.FindFirstByXPath("//Button[@Name='OK']");
-var elements = window.FindAllByXPath("//Button");
-```
-
----
-
-## Interações
-
-### Cliques
-
-```csharp
-// Clique simples
-button.Click();
-
-// Clique no centro
-button.Click(moveMouse: true);
-
-// Duplo clique
-button.DoubleClick();
-
-// Clique com botão direito
-button.RightClick();
-
-// Clique em coordenada específica
-var point = button.GetClickablePoint();
-Mouse.Click(point);
-```
-
-### Preencher Texto
-
-```csharp
-// Usar ValuePattern (melhor)
-var textbox = window.FindFirstDescendant(cf => cf.ByAutomationId("txtEmail"))
-    .AsTextBox();
-textbox.Enter("email@example.com");
-
-// Ou diretamente
-var element = window.FindFirstDescendant(cf => cf.ByAutomationId("txtNome"));
-element.AsTextBox().Text = "João Silva";
-
-// Limpar e preencher
-textbox.Text = "";
-textbox.Text = "Novo texto";
-```
-
-### Teclado
-
-```csharp
-using FlaUI.Core.Input;
-using FlaUI.Core.WindowsAPI;
-
-// Digitar texto
-Keyboard.Type("Olá, mundo!");
-
-// Pressionar teclas especiais
-Keyboard.Press(VirtualKeyShort.ENTER);
-Keyboard.Press(VirtualKeyShort.TAB);
-Keyboard.Press(VirtualKeyShort.ESCAPE);
-
-// Combinações
-Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_A); // Ctrl+A
-Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_C); // Ctrl+C
-
-// Pressionar e segurar
-Keyboard.Down(VirtualKeyShort.SHIFT);
-// ... outras ações
-Keyboard.Up(VirtualKeyShort.SHIFT);
-```
-
-### Mouse
-
-```csharp
-using FlaUI.Core.Input;
-
-// Mover para elemento
-Mouse.MoveTo(element.GetClickablePoint());
-
-// Mover para coordenada
-Mouse.MoveTo(x: 500, y: 300);
-
-// Cliques
-Mouse.LeftClick();
-Mouse.RightClick();
-Mouse.DoubleClick();
-
-// Drag and Drop
-Mouse.DragHorizontally(MouseButton.Left, startPoint, distance: 100);
-Mouse.Drag(MouseButton.Left, startPoint, endPoint);
-
-// Scroll
-Mouse.Scroll(-120); // Scroll down
-Mouse.Scroll(120);  // Scroll up
-```
-
-### ComboBox / Dropdown
-
-```csharp
-var comboBox = window.FindFirstDescendant(cf => cf.ByAutomationId("cmbEstado"))
-    .AsComboBox();
-
-// Expandir
-comboBox.Expand();
-
-// Selecionar por índice
-comboBox.Select(2);
-
-// Selecionar por texto
-var items = comboBox.Items;
-var item = items.First(i => i.Text == "São Paulo");
-item.Select();
-
-// Colapsar
-comboBox.Collapse();
-
-// Valor selecionado
-var selected = comboBox.SelectedItem;
-Console.WriteLine($"Selecionado: {selected.Text}");
-```
-
-### Checkbox e Radio Button
-
-```csharp
-var checkbox = window.FindFirstDescendant(cf => cf.ByAutomationId("chkAceito"))
-    .AsCheckBox();
-
-// Marcar
-checkbox.IsChecked = true;
-
-// Desmarcar
-checkbox.IsChecked = false;
-
-// Verificar estado
-if (checkbox.IsChecked)
-{
-    Console.WriteLine("Checkbox marcado");
-}
-
-// Radio button (similar)
-var radio = window.FindFirstDescendant(cf => cf.ByName("Masculino"))
-    .AsRadioButton();
-radio.IsChecked = true;
-```
-
-### DataGrid / Table
-
-```csharp
-var grid = window.FindFirstDescendant(cf => cf.ByControlType(ControlType.DataGrid))
-    .AsGrid();
-
-// Obter linhas
-var rows = grid.Rows;
-Console.WriteLine($"Total de linhas: {rows.Length}");
-
-// Iterar por linhas
-foreach (var row in rows)
-{
-    var cells = row.Cells;
-    foreach (var cell in cells)
-    {
-        Console.Write($"{cell.Value} | ");
-    }
-    Console.WriteLine();
-}
-
-// Selecionar linha
-rows[0].Select();
-
-// Obter célula específica
-var cell = grid.Rows[2].Cells[1];
-Console.WriteLine($"Valor: {cell.Value}");
-```
-
-### TreeView
-
-```csharp
-var tree = window.FindFirstDescendant(cf => cf.ByControlType(ControlType.Tree))
-    .AsTree();
-
-// Obter itens raiz
-var rootItems = tree.Items;
-
-// Expandir item
-rootItems[0].Expand();
-
-// Colapsar
-rootItems[0].Collapse();
-
-// Selecionar
-rootItems[0].Select();
-
-// Navegar hierarquia
-var subItems = rootItems[0].Items;
-subItems[2].Select();
-```
-
-### Menu
-
-```csharp
-// Encontrar menu
-var menuBar = window.FindFirstDescendant(cf => cf.ByControlType(ControlType.MenuBar));
-
-// Menu item por texto
-var fileMenu = menuBar.FindFirstDescendant(cf => cf.ByText("Arquivo"))
-    .AsMenuItem();
-fileMenu.Invoke();
-
-// Submenu
-var openItem = window.FindFirstDescendant(cf => cf.ByText("Abrir"))
-    .AsMenuItem();
-openItem.Invoke();
-
-// Ou navegar por hierarquia
-var menu = window.FindFirstDescendant(cf => cf.ByControlType(ControlType.Menu));
-var items = menu.FindAllChildren(cf => cf.ByControlType(ControlType.MenuItem));
-items[1].Click(); // Segundo item
-```
-
----
-
-## Propriedades
-
-### Propriedades Comuns
-
-```csharp
-// Nome
-string name = element.Name;
-
-// AutomationId
-string id = element.AutomationId;
-
-// ControlType
-var type = element.ControlType;
-
-// ClassName
-string className = element.ClassName;
-
-// Visível
-bool isVisible = element.IsEnabled;
-
-// Habilitado
-bool isEnabled = element.IsEnabled;
-
-// BoundingRectangle
-var bounds = element.BoundingRectangle;
-Console.WriteLine($"X: {bounds.X}, Y: {bounds.Y}, Width: {bounds.Width}, Height: {bounds.Height}");
-
-// Pai
-var parent = element.Parent;
-
-// Filhos
-var children = element.FindAllChildren();
-```
-
-### Propriedades Específicas
-
-```csharp
-// TextBox
-var textBox = element.AsTextBox();
-string text = textBox.Text;
-bool isReadOnly = textBox.IsReadOnly;
-
-// Button
-var button = element.AsButton();
-string buttonText = button.Text;
-
-// CheckBox
-var checkbox = element.AsCheckBox();
-bool isChecked = checkbox.IsChecked;
-
-// Window
-var window = element.AsWindow();
-bool isModal = window.IsModal;
-WindowVisualState state = window.WindowVisualState; // Normal, Maximized, Minimized
-```
-
----
-
-## Padrões de Controle
-
-UI Automation usa **Control Patterns** para interagir com elementos.
-
-### InvokePattern (Botões)
-
-```csharp
-if (element.Patterns.Invoke.IsSupported)
-{
-    element.Patterns.Invoke.Pattern.Invoke();
-}
-```
-
-### ValuePattern (TextBox, Slider)
-
-```csharp
-if (element.Patterns.Value.IsSupported)
-{
-    var pattern = element.Patterns.Value.Pattern;
-    pattern.SetValue("Novo valor");
-    string value = pattern.Value;
-}
-```
-
-### SelectionItemPattern (ComboBox, List)
-
-```csharp
-if (element.Patterns.SelectionItem.IsSupported)
-{
-    var pattern = element.Patterns.SelectionItem.Pattern;
-    pattern.Select();
-    bool isSelected = pattern.IsSelected;
-}
-```
-
-### TogglePattern (CheckBox)
-
-```csharp
-if (element.Patterns.Toggle.IsSupported)
-{
-    var pattern = element.Patterns.Toggle.Pattern;
-    pattern.Toggle();
-    ToggleState state = pattern.ToggleState; // On, Off, Indeterminate
-}
-```
-
-### WindowPattern
-
-```csharp
-if (window.Patterns.Window.IsSupported)
-{
-    var pattern = window.Patterns.Window.Pattern;
-    
-    pattern.SetWindowVisualState(WindowVisualState.Maximized);
-    pattern.Close();
-}
-```
-
----
-
-## Exemplos Práticos
-
-### Exemplo 1: Automatizar Bloco de Notas
-
-```csharp
-using FlaUI.Core;
-using FlaUI.Core.AutomationElements;
-using FlaUI.Core.Input;
-using FlaUI.UIA3;
-
-class Program
-{
-    static void Main()
-    {
-        // Iniciar Notepad
-        var app = Application.Launch("notepad.exe");
-        using var automation = new UIA3Automation();
-        
-        var window = app.GetMainWindow(automation);
-        window.Focus();
-        
-        // Digitar texto
-        Keyboard.Type("Olá do FlaUI!");
-        Keyboard.Press(VirtualKeyShort.ENTER);
-        Keyboard.Type("Esta é uma automação desktop.");
-        
-        // Salvar arquivo (Ctrl+S)
-        Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_S);
-        
-        // Aguardar janela de salvar
-        Thread.Sleep(1000);
-        var saveDialog = window.ModalWindows[0];
-        
-        // Preencher nome do arquivo
-        var fileNameBox = saveDialog.FindFirstDescendant(cf => 
-            cf.ByControlType(ControlType.Edit).And(cf.ByName("Nome do arquivo:")));
-        fileNameBox.AsTextBox().Text = "teste_flaui.txt";
-        
-        // Clicar em Salvar
-        var saveButton = saveDialog.FindFirstDescendant(cf => 
-            cf.ByControlType(ControlType.Button).And(cf.ByName("Salvar")));
-        saveButton.Click();
-        
-        // Fechar
-        Thread.Sleep(1000);
-        app.Close();
-        
-        Console.WriteLine("Automação concluída!");
-    }
-}
-```
-
-### Exemplo 2: Extrair Dados de Aplicação
-
-```csharp
-class DataExtractor
-{
-    static void ExtrairDadosGrid()
-    {
-        using var automation = new UIA3Automation();
-        
-        // Anexar a aplicação em execução
-        var window = automation.GetDesktop()
-            .FindFirstChild(cf => cf.ByName("Minha Aplicação"));
-        
-        if (window == null)
+        if (_automation == null)
         {
-            Console.WriteLine("Aplicação não encontrada!");
-            return;
-        }
-        
-        // Encontrar DataGrid
-        var grid = window.FindFirstDescendant(cf => 
-            cf.ByControlType(ControlType.DataGrid)).AsGrid();
-        
-        // Extrair dados
-        var dados = new List<Dictionary<string, string>>();
-        
-        foreach (var row in grid.Rows)
-        {
-            var linha = new Dictionary<string, string>();
-            var cells = row.Cells;
-            
-            for (int i = 0; i < cells.Length; i++)
+            lock (_lock)
             {
-                linha[$"Coluna{i}"] = cells[i].Value;
+                _automation ??= new UIA3Automation();
+            }
+        }
+        return _automation;
+    }
+
+    /// <summary>
+    /// Abre browser alternativo caso Playwright falhe
+    /// </summary>
+    public static async Task<bool> AbrirBrowserAlternativo(string url)
+    {
+        try
+        {
+            if (!Config.Instancia.FlaUIDisponivel())
+            {
+                LoggingTask.RegistrarAviso("🖥️ FlaUI não disponível ou desabilitado");
+                return false;
+            }
+
+            var config = Config.Instancia.AutomacaoDesktop.ConfiguracaoBrowser;
+            
+            // Iniciar processo do browser
+            var processInfo = new ProcessStartInfo
+            {
+                FileName = config.BrowserAlternativo,
+                Arguments = $"{config.ArgumentosLancamento} \"{url}\"",
+                UseShellExecute = true
+            };
+
+            var processo = Process.Start(processInfo);
+            if (processo == null)
+            {
+                LoggingTask.RegistrarErro($"Falha ao iniciar browser alternativo: {config.BrowserAlternativo}");
+                return false;
+            }
+
+            // Aguardar janela aparecer
+            await Task.Delay(config.TimeoutLancamento);
+
+            // Verificar se janela está aberta
+            var automation = ObterAutomation();
+            var janelas = automation.GetDesktop().FindAllChildren(cf => 
+                cf.ByControlType(ControlType.Window).And(
+                cf.ByProcessId(processo.Id)));
+
+            if (janelas.Any())
+            {
+                LoggingTask.RegistrarInfo($"🖥️ Browser alternativo aberto: PID {processo.Id}");
+                return true;
+            }
+
+            LoggingTask.RegistrarAviso("🖥️ Browser alternativo iniciado mas janela não detectada");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro("Erro ao abrir browser alternativo", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Captura screenshot da tela inteira ou janela específica
+    /// </summary>
+    public static async Task<string?> CapturarScreenshot(string? nomeJanela = null, string? sufixo = null)
+    {
+        try
+        {
+            if (!Config.Instancia.AutomacaoDesktop.CapturarScreenshots)
+            {
+                return null;
+            }
+
+            var automation = ObterAutomation();
+            var nomeArquivo = $"screenshot{(string.IsNullOrWhiteSpace(sufixo) ? "" : $"_{sufixo}")}";
+            var caminhoArquivo = Config.Instancia.ObterCaminhoScreenshot(nomeArquivo);
+
+            if (string.IsNullOrWhiteSpace(nomeJanela))
+            {
+                // Screenshot da tela inteira
+                Capture.Screen().ToFile(caminhoArquivo, ImageFormat.Png);
+            }
+            else
+            {
+                // Screenshot de janela específica
+                var janela = EncontrarJanela(nomeJanela);
+                if (janela != null)
+                {
+                    Capture.Element(janela).ToFile(caminhoArquivo, ImageFormat.Png);
+                }
+                else
+                {
+                    LoggingTask.RegistrarAviso($"🖥️ Janela '{nomeJanela}' não encontrada para screenshot");
+                    return null;
+                }
+            }
+
+            LoggingTask.RegistrarInfo($"📸 Screenshot salvo: {Path.GetFileName(caminhoArquivo)}");
+            return caminhoArquivo;
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro("Erro ao capturar screenshot", ex);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Encontra janela por nome ou classe
+    /// </summary>
+    public static Window? EncontrarJanela(string identificador, int timeoutMs = 0)
+    {
+        try
+        {
+            var automation = ObterAutomation();
+            var timeout = timeoutMs > 0 ? timeoutMs : Config.Instancia.AutomacaoDesktop.TimeoutPadrao;
+
+            return Retry.WhileNull(() =>
+            {
+                // Tentar por nome da janela
+                var janelasPorNome = automation.GetDesktop().FindAllChildren(cf => 
+                    cf.ByControlType(ControlType.Window).And(
+                    cf.ByName(identificador)));
+
+                if (janelasPorNome.Any())
+                    return janelasPorNome.First().AsWindow();
+
+                // Tentar por classe
+                var janelasPorClasse = automation.GetDesktop().FindAllChildren(cf => 
+                    cf.ByControlType(ControlType.Window).And(
+                    cf.ByClassName(identificador)));
+
+                return janelasPorClasse.FirstOrDefault()?.AsWindow();
+
+            }, TimeSpan.FromMilliseconds(timeout), TimeSpan.FromMilliseconds(500));
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro($"Erro ao encontrar janela '{identificador}'", ex);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Clica em elemento por seletor XPath
+    /// </summary>
+    public static async Task<bool> ClicarElemento(Window janela, string seletor, int timeoutMs = 0)
+    {
+        try
+        {
+            var timeout = timeoutMs > 0 ? timeoutMs : Config.Instancia.AutomacaoDesktop.TimeoutPadrao;
+
+            var elemento = Retry.WhileNull(() =>
+            {
+                return janela.FindFirstByXPath(seletor);
+            }, TimeSpan.FromMilliseconds(timeout), TimeSpan.FromMilliseconds(500));
+
+            if (elemento == null)
+            {
+                LoggingTask.RegistrarAviso($"🖥️ Elemento não encontrado: {seletor}");
+                return false;
+            }
+
+            // Aguardar elemento estar clicável
+            await Task.Delay(Config.Instancia.AutomacaoDesktop.DelayEntreAcoes);
+
+            if (elemento.IsEnabled && elemento.IsOffscreen == false)
+            {
+                elemento.Click();
+                LoggingTask.RegistrarInfo($"🖱️ Clique realizado: {seletor}");
+                
+                await Task.Delay(Config.Instancia.AutomacaoDesktop.DelayEntreAcoes);
+                return true;
+            }
+
+            LoggingTask.RegistrarAviso($"🖥️ Elemento não está clicável: {seletor}");
+            return false;
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro($"Erro ao clicar elemento '{seletor}'", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Preenche texto em campo de entrada
+    /// </summary>
+    public static async Task<bool> PreencherTexto(Window janela, string seletor, string texto, bool limparAntes = true)
+    {
+        try
+        {
+            var elemento = janela.FindFirstByXPath(seletor);
+            if (elemento == null)
+            {
+                LoggingTask.RegistrarAviso($"🖥️ Campo de texto não encontrado: {seletor}");
+                return false;
+            }
+
+            var campoTexto = elemento.AsTextBox();
+            if (campoTexto == null)
+            {
+                LoggingTask.RegistrarAviso($"🖥️ Elemento não é campo de texto: {seletor}");
+                return false;
+            }
+
+            await Task.Delay(Config.Instancia.AutomacaoDesktop.DelayEntreAcoes);
+
+            if (limparAntes)
+            {
+                campoTexto.Text = string.Empty;
+            }
+
+            campoTexto.Text = texto;
+            LoggingTask.RegistrarInfo($"⌨️ Texto preenchido no campo: {seletor}");
+
+            await Task.Delay(Config.Instancia.AutomacaoDesktop.DelayEntreAcoes);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro($"Erro ao preencher texto no campo '{seletor}'", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Gerencia arquivos via Windows Explorer (backup se web scraping falhar)
+    /// </summary>
+    public static async Task<bool> GerenciarArquivosExportacao(string diretorioDestino)
+    {
+        try
+        {
+            if (!Config.Instancia.AutomacaoDesktop.ConfiguracaoSistema.GerenciarArquivos)
+            {
+                LoggingTask.RegistrarInfo("🖥️ Gerenciamento de arquivos via FlaUI desabilitado");
+                return true;
+            }
+
+            // Abrir Windows Explorer no diretório
+            Process.Start("explorer.exe", diretorioDestino);
+            await Task.Delay(2000);
+
+            // Encontrar janela do Explorer
+            var explorer = EncontrarJanela("File Explorer") ?? EncontrarJanela("Windows Explorer");
+            if (explorer == null)
+            {
+                LoggingTask.RegistrarAviso("🖥️ Windows Explorer não encontrado");
+                return false;
+            }
+
+            LoggingTask.RegistrarInfo($"📁 Windows Explorer aberto: {diretorioDestino}");
+
+            // Capturar screenshot do diretório
+            await CapturarScreenshot("File Explorer", "gerenciamento_arquivos");
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro("Erro ao gerenciar arquivos via Explorer", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Executa retry de operação com FlaUI
+    /// </summary>
+    public static async Task<T?> ExecutarComRetry<T>(Func<Task<T>> operacao, string descricaoOperacao)
+    {
+        var maxTentativas = Config.Instancia.AutomacaoDesktop.TentativasMaximas;
+
+        for (int tentativa = 1; tentativa <= maxTentativas; tentativa++)
+        {
+            try
+            {
+                var resultado = await operacao();
+                if (resultado != null)
+                {
+                    if (tentativa > 1)
+                    {
+                        LoggingTask.RegistrarInfo($"🔄 {descricaoOperacao} sucesso na tentativa {tentativa}");
+                    }
+                    return resultado;
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingTask.RegistrarAviso($"🔄 {descricaoOperacao} falhou (tentativa {tentativa}/{maxTentativas}): {ex.Message}");
+                
+                if (tentativa < maxTentativas)
+                {
+                    await Task.Delay(1000 * tentativa); // Backoff exponencial
+                }
+            }
+        }
+
+        LoggingTask.RegistrarErro($"❌ {descricaoOperacao} falhou após {maxTentativas} tentativas");
+        return default(T);
+    }
+
+    /// <summary>
+    /// Limpa recursos do FlaUI
+    /// </summary>
+    public static void LimparRecursos()
+    {
+        try
+        {
+            lock (_lock)
+            {
+                _automation?.Dispose();
+                _automation = null;
             }
             
-            dados.Add(linha);
+            LoggingTask.RegistrarInfo("🧹 Recursos FlaUI liberados");
         }
-        
-        // Exibir
-        foreach (var item in dados)
+        catch (Exception ex)
         {
-            Console.WriteLine(string.Join(" | ", item.Values));
+            LoggingTask.RegistrarAviso($"Aviso ao liberar recursos FlaUI: {ex.Message}");
         }
     }
 }
 ```
 
-### Exemplo 3: Preencher Formulário Complexo
+## Métodos Mais Usados
+
+### Inicializar FlaUI e Encontrar Janelas
 
 ```csharp
-class FormFiller
+using FlaUI.UIA3;
+using FlaUI.Core.AutomationElements;
+
+// Criar automação
+var automation = new UIA3Automation();
+
+// Encontrar janela por nome
+var janela = automation.GetDesktop()
+    .FindFirstChild(cf => cf.ByName("Google Chrome"))
+    ?.AsWindow();
+
+if (janela != null)
 {
-    static void PreencherCadastro()
-    {
-        using var automation = new UIA3Automation();
-        var window = automation.GetDesktop()
-            .FindFirstChild(cf => cf.ByName("Cadastro de Cliente"));
-        
-        // TextBoxes
-        var txtNome = window.FindFirstDescendant(cf => 
-            cf.ByAutomationId("txtNome")).AsTextBox();
-        txtNome.Text = "João Silva";
-        
-        var txtEmail = window.FindFirstDescendant(cf => 
-            cf.ByAutomationId("txtEmail")).AsTextBox();
-        txtEmail.Text = "joao@email.com";
-        
-        // ComboBox
-        var cmbEstado = window.FindFirstDescendant(cf => 
-            cf.ByAutomationId("cmbEstado")).AsComboBox();
-        cmbEstado.Select("SP");
-        
-        // CheckBox
-        var chkAtivo = window.FindFirstDescendant(cf => 
-            cf.ByAutomationId("chkAtivo")).AsCheckBox();
-        chkAtivo.IsChecked = true;
-        
-        // Radio Button
-        var rdMasculino = window.FindFirstDescendant(cf => 
-            cf.ByAutomationId("rdMasculino")).AsRadioButton();
-        rdMasculino.Select();
-        
-        // DatePicker (como TextBox)
-        var dtNascimento = window.FindFirstDescendant(cf => 
-            cf.ByAutomationId("dtNascimento")).AsTextBox();
-        dtNascimento.Text = "01/01/1990";
-        
-        // Botão Salvar
-        var btnSalvar = window.FindFirstDescendant(cf => 
-            cf.ByAutomationId("btnSalvar"));
-        btnSalvar.Click();
-        
-        Console.WriteLine("Formulário preenchido!");
-    }
+    LoggingTask.RegistrarInfo("✅ Janela Chrome encontrada");
 }
 ```
 
-### Exemplo 4: Esperar Elemento
+### Interagir com Elementos (Click, Texto)
 
 ```csharp
-static AutomationElement WaitForElement(
-    AutomationElement parent, 
-    Func<ConditionFactory, ConditionBase> condition,
-    TimeSpan timeout)
+// Clicar em botão
+var botao = janela.FindFirstByXPath("//Button[@Name='OK']");
+if (botao != null && botao.IsEnabled)
 {
-    var endTime = DateTime.Now + timeout;
-    
-    while (DateTime.Now < endTime)
-    {
-        var element = parent.FindFirstDescendant(condition);
-        if (element != null)
-            return element;
-        
-        Thread.Sleep(500);
-    }
-    
-    throw new TimeoutException("Elemento não encontrado");
+    botao.Click();
+    LoggingTask.RegistrarInfo("🖱️ Botão OK clicado");
 }
 
-// Uso
-var button = WaitForElement(
-    window, 
-    cf => cf.ByName("Processar"),
-    TimeSpan.FromSeconds(30)
-);
-```
-
----
-
-## Boas Práticas
-
-### 1. Use AutomationId Sempre que Possível
-
-```csharp
-// ✅ BOM - AutomationId é estável
-var element = window.FindFirstDescendant(cf => cf.ByAutomationId("btnSalvar"));
-
-// ❌ RUIM - Nome pode mudar (localização)
-var element = window.FindFirstDescendant(cf => cf.ByName("Save"));
-```
-
-### 2. Verifique Existência Antes de Usar
-
-```csharp
-var element = window.FindFirstDescendant(cf => cf.ByAutomationId("btnOK"));
-
-if (element != null && element.IsAvailable)
+// Preencher campo de texto
+var campoTexto = janela.FindFirstByXPath("//Edit[@AutomationId='searchBox']");
+if (campoTexto != null)
 {
-    element.Click();
+    campoTexto.AsTextBox().Text = "https://www.adrenaline.com.br";
+    LoggingTask.RegistrarInfo("⌨️ URL preenchida na barra de endereço");
+}
+```
+
+### Capturar Screenshots para Debug
+
+```csharp
+using FlaUI.Core.Tools;
+
+// Screenshot da tela inteira
+var caminhoScreenshot = Config.Instancia.ObterCaminhoScreenshot("erro_scraping");
+Capture.Screen().ToFile(caminhoScreenshot, ImageFormat.Png);
+
+// Screenshot de janela específica
+if (janela != null)
+{
+    var caminhoJanela = Config.Instancia.ObterCaminhoScreenshot("janela_browser");
+    Capture.Element(janela).ToFile(caminhoJanela, ImageFormat.Png);
+}
+
+LoggingTask.RegistrarInfo("📸 Screenshots de debug capturados");
+```
+
+### Aguardar Elementos com Timeout
+
+```csharp
+using FlaUI.Core.Tools;
+
+// Aguardar elemento aparecer (com retry)
+var elemento = Retry.WhileNull(() => 
+{
+    return janela.FindFirstByXPath("//Button[@Name='Entrar']");
+}, TimeSpan.FromSeconds(30), TimeSpan.FromMilliseconds(500));
+
+if (elemento != null)
+{
+    elemento.Click();
+    LoggingTask.RegistrarInfo("✅ Elemento encontrado e clicado após retry");
 }
 else
 {
-    Console.WriteLine("Elemento não encontrado");
+    LoggingTask.RegistrarErro("❌ Timeout: elemento não encontrado");
 }
 ```
 
-### 3. Use Padrões Quando Disponível
+### Integração como Backup do Playwright
 
 ```csharp
-// ✅ BOM - usa pattern
-if (element.Patterns.Invoke.IsSupported)
+// No NavigationTask.cs - usar FlaUI como fallback
+public async Task<bool> Navegar(string url)
 {
-    element.Patterns.Invoke.Pattern.Invoke();
+    try
+    {
+        // Tentar Playwright primeiro
+        var sucessoPlaywright = await NavegacaoPlaywright(url);
+        if (sucessoPlaywright)
+        {
+            return true;
+        }
+
+        LoggingTask.RegistrarAviso("🌐 Playwright falhou, tentando FlaUI como backup");
+        
+        // Fallback: FlaUI
+        if (Config.Instancia.FlaUIDisponivel())
+        {
+            var sucessoFlaUI = await DesktopAutomationTask.AbrirBrowserAlternativo(url);
+            if (sucessoFlaUI)
+            {
+                LoggingTask.RegistrarInfo("🖥️ Navegação via FlaUI bem-sucedida");
+                return true;
+            }
+        }
+
+        LoggingTask.RegistrarErro("❌ Falha na navegação: Playwright e FlaUI falharam");
+        return false;
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro("Erro geral na navegação", ex);
+        return false;
+    }
 }
-
-// ❌ MENOS EFICIENTE
-element.Click();
 ```
 
-### 4. Libere Recursos
+### Limpeza de Recursos
 
 ```csharp
-using var automation = new UIA3Automation();
-// ... código ...
-// Liberado automaticamente
-```
-
-### 5. Adicione Esperas Apropriadas
-
-```csharp
-// Para janelas modais
-Thread.Sleep(500);
-
-// Para processamento
-Wait.UntilInputIsProcessed();
-
-// Para elementos
-Retry.WhileException(() => element.Click(), TimeSpan.FromSeconds(5));
-```
-
-### 6. Capture Screenshots em Erros
-
-```csharp
-try
+// Sempre limpar recursos no final ou em using
+public void Dispose()
 {
-    element.Click();
-}
-catch (Exception ex)
-{
-    var screenshot = Capture.Screen();
-    screenshot.ToFile("erro.png");
-    throw;
-}
-```
-
-### 7. Use Inspect.exe para Descobrir Elementos
-
-O Windows SDK inclui `Inspect.exe` para explorar a árvore de elementos:
-- Localizado em: `C:\Program Files (x86)\Windows Kits\10\bin\<version>\x64\inspect.exe`
-- Mostra AutomationId, ControlType, Patterns disponíveis
-
----
-
-## Ferramentas Auxiliares
-
-### FlaUI Inspect
-
-```bash
-# Instalar globalmente
-dotnet tool install -g FlaUI.Inspector
-
-# Executar
-flaui-inspect
-```
-
-### Capture (Screenshots)
-
-```csharp
-using FlaUI.Core.Capturing;
-
-// Capturar tela inteira
-var screenshot = Capture.Screen();
-screenshot.ToFile("tela.png");
-
-// Capturar elemento específico
-var elementScreenshot = Capture.Element(element);
-elementScreenshot.ToFile("elemento.png");
-
-// Capturar janela
-var windowScreenshot = Capture.Window(window);
-```
-
----
-
-## Troubleshooting
-
-### Problema: "Element not found"
-
-**Solução:**
-1. Use `Inspect.exe` para verificar propriedades
-2. Adicione esperas
-3. Verifique se aplicação está em primeiro plano
-
-### Problema: "Pattern not supported"
-
-**Solução:**
-```csharp
-if (!element.Patterns.Value.IsSupported)
-{
-    // Usar alternativa (ex: teclado)
-    element.Focus();
-    Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_A);
-    Keyboard.Type("novo valor");
+    try
+    {
+        DesktopAutomationTask.LimparRecursos();
+        LoggingTask.RegistrarInfo("🧹 Recursos de automação liberados");
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarAviso($"Aviso na limpeza: {ex.Message}");
+    }
 }
 ```
-
-### Problema: Performance lenta
-
-**Solução:**
-- Use `FindFirstChild` em vez de `FindFirstDescendant` quando possível
-- Cache elementos encontrados
-- Limite profundidade de busca
-
----
-
-## Recursos Adicionais
-
-- **GitHub**: https://github.com/FlaUI/FlaUI
-- **Documentação**: https://github.com/FlaUI/FlaUI/wiki
-- **UI Automation**: https://docs.microsoft.com/windows/win32/winauto/entry-uiauto-win32
-
----
-
-**Versão:** 1.0  
-**Última atualização:** Novembro 2025

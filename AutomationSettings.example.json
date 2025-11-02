@@ -3,7 +3,12 @@
     "UrlBase": "https://www.adrenaline.com.br",
     "TimeoutSegundos": 30,
     "HeadlessMode": false,
-    "NavegadorPadrao": "chromium"
+    "NavegadorPadrao": "chromium",
+    "ViewportWidth": 1920,
+    "ViewportHeight": 1080,
+    "UserAgent": "",
+    "BloquearImagens": true,
+    "BloquearCSS": false
   },
   "Categorias": {
     "Tecnologia": "/tecnologia/",

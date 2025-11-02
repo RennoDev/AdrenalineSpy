@@ -1,740 +1,1132 @@
 # Microsoft.Playwright - Automação Web
 
-## Índice
-1. [Introdução](#introdução)
-2. [Instalação](#instalação)
-3. [Conceitos Básicos](#conceitos-básicos)
-4. [Primeiros Passos](#primeiros-passos)
-5. [Seletores](#seletores)
-6. [Interações](#interações)
-7. [Navegação](#navegação)
-8. [Screenshots e PDFs](#screenshots-e-pdfs)
-9. [Esperas e Timeouts](#esperas-e-timeouts)
-10. [Exemplos Práticos](#exemplos-práticos)
-11. [Boas Práticas](#boas-práticas)
+## 1. O que é o Playwright
+
+**Microsoft Playwright** é uma biblioteca de automação web desenvolvida pela Microsoft que permite controlar navegadores (Chromium, Firefox, WebKit/Safari) através de código .NET.
+
+### Por que usar no AdrenalineSpy?
+
+✅ **Auto-waiting** - Espera automática por elementos (elimina `Thread.Sleep`)  
+✅ **Multi-browser** - Suporte a Chromium, Firefox e WebKit com mesma API  
+✅ **Headless/Headed** - Modo invisível para produção ou visível para debug  
+✅ **Performance** - API assíncrona ideal para scraping em larga escala  
+✅ **Interceptação de rede** - Bloquear recursos desnecessários (imagens, CSS)  
+✅ **Screenshots e PDFs** - Captura de tela e geração de PDFs automática
+
+### Onde é usado no projeto
+
+- **NavigationTask** - Navegar no Adrenaline.com.br e coletar URLs de notícias por categoria
+- **ExtractionTask** - Acessar páginas individuais e extrair dados estruturados (título, conteúdo, data)
 
 ---
 
-## Introdução
+## 2. Como Instalar
 
-**Playwright** é uma biblioteca moderna para automação de navegadores desenvolvida pela Microsoft. Suporta Chromium, Firefox e WebKit (Safari) com uma única API.
-
-### Vantagens
-- ✅ Suporte a múltiplos navegadores
-- ✅ Auto-waiting (espera automática por elementos)
-- ✅ API assíncrona e performática
-- ✅ Screenshots, PDFs e vídeos
-- ✅ Interceptação de requisições de rede
-- ✅ Emulação de dispositivos móveis
-- ✅ Suporte a múltiplos contextos e páginas
-
----
-
-## Instalação
-
-### Passo a Passo Completo
-
-#### 1. Adicionar o pacote NuGet
-
-No terminal do seu projeto:
+### Passo 1: Instalar Pacote NuGet
 
 ```bash
 dotnet add package Microsoft.Playwright
 ```
 
-#### 2. Instalar os navegadores
+### Passo 2: Instalar Motores dos Navegadores (OBRIGATÓRIO!)
 
-**Importante:** Após adicionar o pacote, você DEVE instalar os navegadores. Sem isso, o Playwright não funcionará!
+Após instalar o pacote, você **DEVE** executar o comando para baixar os navegadores:
 
 **No Windows (PowerShell):**
-```bash
-# Navegue até a pasta do projeto
-cd C:\CaminhoDoSeuProjeto
 
-# Compile primeiro
+```bash
+# 1. Primeiro compile o projeto
 dotnet build
 
-# Instale os navegadores
+# 2. Instale os navegadores
+pwsh bin\Debug\net9.0\playwright.ps1 install
+```
+
+**No Linux/macOS:**
+
+```bash
+# 1. Primeiro compile o projeto  
+dotnet build
+
+# 2. Instale os navegadores
 pwsh bin/Debug/net9.0/playwright.ps1 install
 ```
 
-**No Linux/Mac:**
+⚠️ **Erro comum:** Se você ver `Executable doesn't exist at ...`, significa que esqueceu este passo!
+
+### Passo 3 (Opcional): Instalar apenas um navegador
+
+Para economizar espaço em disco:
+
 ```bash
-# Compile primeiro
-dotnet build
+# Instalar apenas Chromium (recomendado para scraping)
+pwsh bin\Debug\net9.0\playwright.ps1 install chromium
 
-# Instale os navegadores
-./bin/Debug/net9.0/playwright.sh install
+# Opções disponíveis: chromium, firefox, webkit
 ```
-
-#### 3. Instalar apenas um navegador específico (opcional)
-
-Se você só precisa de um navegador específico para economizar espaço:
-```bash
-pwsh bin/Debug/net9.0/playwright.ps1 install chromium
-```
-
-Opções: `chromium`, `firefox`, `webkit`
 
 ---
 
-## Conceitos Básicos
+## 3. Implementar no AutomationSettings.json
 
-### Hierarquia de Objetos
+Use a seção `Navegacao` existente, enriquecendo conforme necessário:
 
+```json
+{
+  "Navegacao": {
+    "UrlBase": "https://www.adrenaline.com.br",
+    "TimeoutSegundos": 30,
+    "HeadlessMode": false,
+    "NavegadorPadrao": "chromium",
+    "ViewportWidth": 1920,
+    "ViewportHeight": 1080,
+    "UserAgent": "",
+    "BloquearImagens": true,
+    "BloquearCSS": false
+  }
+}
 ```
-Playwright
-  └── Browser (navegador)
-       └── BrowserContext (contexto isolado)
-            └── Page (página/aba)
-                 └── Frame (iframe)
-                      └── Locator (elemento)
-```
 
-### Browser vs BrowserContext
+**Configurações explicadas:**
 
-- **Browser**: Instância do navegador (Chrome, Firefox, etc)
-- **BrowserContext**: Sessão isolada com cookies, cache e storage próprios
-- **Page**: Uma aba ou janela do navegador
+- `UrlBase` - Site base para todas as navegações
+- `TimeoutSegundos` - Timeout padrão para todas as operações (30s recomendado)
+- `HeadlessMode` - `false` = visível (debug), `true` = invisível (produção)
+- `NavegadorPadrao` - `"chromium"`, `"firefox"` ou `"webkit"`
+- `ViewportWidth/Height` - Resolução da janela do navegador
+- `UserAgent` - String personalizada do user-agent (vazio = padrão)
+- `BloquearImagens` - Acelera scraping bloqueando imagens
+- `BloquearCSS` - Bloquear CSS (pode quebrar layout mas é mais rápido)
 
 ---
 
-## Primeiros Passos
+## 4. Implementar no Config.cs
 
-### Exemplo Básico
+### NavegacaoConfig (Config.cs)
+
+A classe `NavegacaoConfig` já existe e herda automaticamente do JSON. Atualize conforme necessário:
+
+```csharp
+public class NavegacaoConfig
+{
+    public string UrlBase { get; set; } = string.Empty;
+    public int TimeoutSegundos { get; set; } = 30;
+    public bool HeadlessMode { get; set; } = false;
+    public string NavegadorPadrao { get; set; } = "chromium";
+    public int ViewportWidth { get; set; } = 1920;
+    public int ViewportHeight { get; set; } = 1080;
+    public string UserAgent { get; set; } = string.Empty;
+    public bool BloquearImagens { get; set; } = false;
+    public bool BloquearCSS { get; set; } = false;
+}
+```
+
+### Playwright.cs (Classe Dedicada)
+
+**Crie uma classe específica** para centralizar toda configuração do "motor" do Playwright e evitar código repetitivo nas Tasks:
+
+#### Passo 1: Criar o arquivo Playwright.cs
+
+Na **raiz do projeto** (mesmo nível de `Program.cs`), crie um novo arquivo chamado `Playwright.cs`:
 
 ```csharp
 using Microsoft.Playwright;
 
-class Program
-{
-    static async Task Main(string[] args)
-    {
-        // Instalar Playwright
-        var exitCode = Microsoft.Playwright.Program.Main(new[] { "install" });
-        if (exitCode != 0)
-        {
-            throw new Exception($"Falha ao instalar navegadores. Código: {exitCode}");
-        }
+namespace AdrenalineSpy;
 
-        // Criar instância do Playwright
-        using var playwright = await Playwright.CreateAsync();
-        
-        // Lançar navegador
-        await using var browser = await playwright.Chromium.LaunchAsync(new()
+/// <summary>
+/// Classe responsável por centralizar toda configuração do Playwright
+/// Evita código repetitivo nas Tasks e facilita manutenção
+/// </summary>
+public static class Playwright
+{
+    private static IPlaywright? _playwright;
+    private static IBrowser? _browser;
+    private static readonly Config _config = Config.Instancia;
+
+    /// <summary>
+    /// Inicializa o Playwright e navegador usando configurações do Config
+    /// </summary>
+    public static async IBrowser InicializarNavegador()
+    {
+        if (_browser != null)
+            return _browser; // Reutilizar se já existe
+
+        try
         {
-            Headless = false // false = mostra o navegador
+            LoggingTask.RegistrarInfo("Inicializando Playwright...");
+
+            // Criar instância do Playwright
+            _playwright = await Microsoft.Playwright.Playwright.CreateAsync();
+
+            // Configurar opções do navegador baseado no Config
+            var opcoes = new BrowserTypeLaunchOptions
+            {
+                Headless = _config.Navegacao.HeadlessMode,
+                Timeout = _config.Navegacao.TimeoutSegundos * 1000
+            };
+
+            // Escolher navegador baseado na configuração
+            _browser = _config.Navegacao.NavegadorPadrao.ToLower() switch
+            {
+                "firefox" => await _playwright.Firefox.LaunchAsync(opcoes),
+                "webkit" => await _playwright.Webkit.LaunchAsync(opcoes),
+                _ => await _playwright.Chromium.LaunchAsync(opcoes)
+            };
+
+            LoggingTask.RegistrarInfo($"✅ Navegador {_config.Navegacao.NavegadorPadrao} iniciado");
+            return _browser;
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro(ex, "Playwright.InicializarNavegador");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Criar nova página com todas as configurações personalizadas aplicadas
+    /// </summary>
+    public static async IPage CriarPagina()
+    {
+        var browser = await InicializarNavegador();
+
+        var context = await browser.NewContextAsync(new BrowserNewContextOptions
+        {
+            ViewportSize = new ViewportSize 
+            { 
+                Width = _config.Navegacao.ViewportWidth, 
+                Height = _config.Navegacao.ViewportHeight 
+            },
+            UserAgent = string.IsNullOrEmpty(_config.Navegacao.UserAgent) 
+                ? null 
+                : _config.Navegacao.UserAgent
         });
-        
-        // Criar contexto
-        var context = await browser.NewContextAsync();
-        
-        // Criar página
+
+        // Aplicar bloqueios de recursos automaticamente
+        await ConfigurarBloqueiosRecursos(context);
+
         var page = await context.NewPageAsync();
         
-        // Navegar
-        await page.GotoAsync("https://www.google.com");
-        
-        // Interagir
-        await page.FillAsync("input[name='q']", "Playwright .NET");
-        await page.PressAsync("input[name='q']", "Enter");
-        
-        // Esperar
-        await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
-        
-        // Screenshot
-        await page.ScreenshotAsync(new() { Path = "resultado.png" });
-        
-        Console.WriteLine("Automação concluída!");
+        // Configurar timeout padrão para todas as operações
+        page.SetDefaultTimeout(_config.Navegacao.TimeoutSegundos * 1000);
+
+        return page;
     }
+
+    /// <summary>
+    /// Configurar bloqueios de recursos (imagens, CSS) para acelerar scraping
+    /// </summary>
+    private static async ConfigurarBloqueiosRecursos(IBrowserContext context)
+    {
+        if (!_config.Navegacao.BloquearImagens && !_config.Navegacao.BloquearCSS)
+            return;
+
+        var recursos = new List<string>();
+
+        if (_config.Navegacao.BloquearImagens)
+            recursos.AddRange(new[] { "**/*.{png,jpg,jpeg,gif,svg,webp,ico,bmp}" });
+
+        if (_config.Navegacao.BloquearCSS)
+            recursos.AddRange(new[] { "**/*.css", "**/*.woff", "**/*.woff2", "**/*.ttf" });
+
+        foreach (var recurso in recursos)
+        {
+            await context.RouteAsync(recurso, route => route.AbortAsync());
+        }
+
+        LoggingTask.RegistrarDebug($"Bloqueio de recursos configurado: {string.Join(", ", recursos)}");
+    }
+
+    /// <summary>
+    /// Navegar para URL com configurações otimizadas
+    /// </summary>
+    public static async NavegarPara(IPage page, string url)
+    {
+        try
+        {
+            LoggingTask.RegistrarDebug($"Navegando para: {url}");
+
+            await page.GotoAsync(url, new PageGotoOptions
+            {
+                Timeout = _config.Navegacao.TimeoutSegundos * 1000,
+                WaitUntil = WaitUntilState.DOMContentLoaded
+            });
+
+            LoggingTask.RegistrarInfo($"✅ Página carregada: {url}");
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro(ex, $"Playwright.NavegarPara({url})");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Finalizar e fechar todos os recursos do Playwright
+    /// </summary>
+    public static async Finalizar()
+    {
+        try
+        {
+            if (_browser != null)
+            {
+                await _browser.CloseAsync();
+                _browser = null;
+                LoggingTask.RegistrarInfo("Navegador fechado");
+            }
+
+            _playwright?.Dispose();
+            _playwright = null;
+
+            LoggingTask.RegistrarInfo("Playwright finalizado");
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro(ex, "Playwright.Finalizar");
+        }
+    }
+}
+```
+
+#### Passo 2: Verificar se compilou corretamente
+
+Após criar o arquivo, teste se está tudo funcionando:
+
+```bash
+dotnet build
+```
+
+Se der erro de compilação, verifique:
+- ✅ O arquivo está na **raiz do projeto** (mesmo nível do `.csproj`)
+- ✅ O namespace é `AdrenalineSpy` 
+- ✅ A linha `_playwright = await Microsoft.Playwright.Playwright.CreateAsync();` está correta
+
+### Como usar nas Tasks:
+
+```csharp
+// Em vez de repetir configuração, use o Playwright
+var page = await Playwright.CriarPagina();
+await Playwright.NavegarPara(page, "https://site.com");
+
+// No final da aplicação
+await Playwright.Finalizar();
+```
+
+### Exemplo Prático: Pesquisar no Google
+
+Aqui está um exemplo **completo e funcional** de como criar uma classe para pesquisar no Google usando Playwright:
+
+#### Passo 1: Criar o arquivo NavigationGoogle.cs
+
+Na pasta `Workflow/Tasks/`, crie um novo arquivo `NavigationGoogle.cs`:
+
+```csharp
+using Microsoft.Playwright;
+
+namespace AdrenalineSpy;
+
+/// <summary>
+/// Exemplo de navegação no Google usando Playwright
+/// </summary>
+public class NavigationGoogle
+{
+    private readonly Config _config;
+
+    public NavigationGoogle()
+    {
+        _config = Config.Instancia;
+    }
+
+    /// <summary>
+    /// Exemplo prático: Pesquisar "playwright" no Google
+    /// </summary>
+    public async Task ExemploPesquisarGoogle()
+    {
+        try
+        {
+            LoggingTask.RegistrarInfo("Iniciando pesquisa no Google...");
+
+            // Criar página usando nossa classe Playwright
+            var page = await Playwright.CriarPagina();
+
+            // Navegar para o Google
+            await Playwright.NavegarPara(page, "https://www.google.com");
+
+            // Aguardar campo de pesquisa aparecer
+            await page.WaitForSelectorAsync("input[name='q']", new PageWaitForSelectorOptions
+            {
+                Timeout = 10000
+            });
+
+            // Localizar campo de pesquisa (seletor do Google)
+            var campoPesquisa = page.Locator("input[name='q']");
+
+            // Escrever "playwright" no campo
+            await campoPesquisa.FillAsync("playwright");
+            LoggingTask.RegistrarInfo("✅ Texto 'playwright' digitado no campo de pesquisa");
+
+            // Pressionar Enter para enviar a pesquisa
+            await campoPesquisa.PressAsync("Enter");
+            LoggingTask.RegistrarInfo("✅ Tecla Enter pressionada");
+
+            // Aguardar resultados carregarem
+            await page.WaitForSelectorAsync("#search", new PageWaitForSelectorOptions
+            {
+                Timeout = 10000
+            });
+
+            // Capturar screenshot dos resultados
+            await page.ScreenshotAsync(new PageScreenshotOptions
+            {
+                Path = "google-resultados-playwright.png",
+                FullPage = false
+            });
+
+            LoggingTask.RegistrarInfo("✅ Pesquisa concluída e screenshot salvo");
+
+            // Fechar página
+            await page.Context.CloseAsync();
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro(ex, "ExemploPesquisarGoogle");
+        }
+    }
+}
+```
+
+#### Passo 2: Como usar no Program.cs
+
+```csharp
+// No seu Program.cs ou onde quiser testar
+var googleTask = new NavigationGoogle();
+await googleTask.ExemploPesquisarGoogle();
+```
+
+**Seletores importantes do Google:**
+- `input[name='q']` - Campo de pesquisa principal
+- `input[value='Pesquisa Google']` - Botão "Pesquisa Google" 
+- `input[value='Estou com sorte']` - Botão "Estou com sorte"
+- `#search` - Container dos resultados de pesquisa
+- `.g` - Cada resultado individual de pesquisa
+
+**Dicas para descobrir seletores:**
+1. Abra o Google no navegador
+2. Pressione F12 para abrir DevTools
+3. Clique na ferramenta de seleção (🔍 ou Ctrl+Shift+C)
+4. Clique no elemento desejado
+5. Copie o seletor CSS no painel Elements
+
+---
+
+## 5. Montar nas Tasks (NavigationTask.cs)
+
+### Estrutura básica da NavigationTask (SIMPLIFICADA)
+
+Com o `Playwright.cs`, a `NavigationTask` fica muito mais limpa e focada apenas na lógica de negócio:
+
+```csharp
+using Microsoft.Playwright;
+
+namespace AdrenalineSpy;
+
+/// <summary>
+/// Task responsável por navegação e coleta de URLs usando Playwright
+/// Toda configuração do "motor" delegada para Playwright
+/// </summary>
+public class NavigationTask
+{
+    private readonly Config _config;
+
+    public NavigationTask()
+    {
+        _config = Config.Instancia;
+    }
+
+    /// <summary>
+    /// Coletar URLs de uma categoria específica
+    /// </summary>
+    public async List<string> ColetarUrlsCategoria(string categoria, string caminhoCategoria)
+    {
+        var urls = new List<string>();
+        
+        try
+        {
+            LoggingTask.RegistrarInfo($"Coletando URLs da categoria: {categoria}");
+
+            // Playwright cuida de toda a configuração!
+            var page = await Playwright.CriarPagina();
+            string urlCompleta = _config.Navegacao.UrlBase + caminhoCategoria;
+            
+            await Playwright.NavegarPara(page, urlCompleta);
+
+            // Aguardar elementos de notícias aparecerem
+            await page.WaitForSelectorAsync("article", new PageWaitForSelectorOptions
+            {
+                Timeout = 10000
+            });
+
+            // Coletar todos os links de notícias (AJUSTAR SELETOR CONFORME HTML REAL)
+            var links = await page.Locator("article a[href]").AllAsync();
+
+            foreach (var link in links)
+            {
+                var href = await link.GetAttributeAsync("href");
+                
+                if (!string.IsNullOrEmpty(href))
+                {
+                    string urlCompleteLink = href.StartsWith("/") 
+                        ? _config.Navegacao.UrlBase + href
+                        : href;
+                    
+                    urls.Add(urlCompleteLink);
+                }
+            }
+
+            LoggingTask.RegistrarInfo($"✅ {urls.Count} URLs coletadas de {categoria}");
+            
+            await page.Context.CloseAsync();
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro(ex, $"NavigationTask.ColetarUrlsCategoria({categoria})");
+        }
+
+        return urls;
+    }
+
+    /// <summary>
+    /// Coletar URLs de múltiplas categorias
+    /// </summary>
+    public async Dictionary<string, List<string>> ColetarUrlsMultiplasCategorias()
+    {
+        var resultado = new Dictionary<string, List<string>>();
+
+        // Categorias do Adrenaline.com.br (AJUSTAR CONFORME SITE REAL)
+        var categorias = new Dictionary<string, string>
+        {
+            { "Tecnologia", "/tecnologia" },
+            { "Games", "/games" },
+            { "Hardware", "/hardware" },
+            { "Smartphones", "/smartphones" }
+        };
+
+        foreach (var categoria in categorias)
+        {
+            try
+            {
+                var urls = await ColetarUrlsCategoria(categoria.Key, categoria.Value);
+                resultado[categoria.Key] = urls;
+
+                LoggingTask.RegistrarInfo($"Categoria {categoria.Key}: {urls.Count} URLs coletadas");
+
+                // Delay entre categorias para ser "educado"
+                await Task.Delay(2000);
+            }
+            catch (Exception ex)
+            {
+                LoggingTask.RegistrarErro(ex, $"Erro ao coletar categoria {categoria.Key}");
+                resultado[categoria.Key] = new List<string>(); // Lista vazia em caso de erro
+            }
+        }
+
+        return resultado;
+    }
+
+    /// <summary>
+    /// Navegar para uma página específica e extrair dados básicos
+    /// </summary>
+    public async NoticiaBasica? ExtrairDadosBasicos(string url)
+    {
+        try
+        {
+            LoggingTask.RegistrarDebug($"Extraindo dados básicos de: {url}");
+
+            var page = await Playwright.CriarPagina();
+            await Playwright.NavegarPara(page, url);
+
+            // Aguardar conteúdo principal
+            await page.WaitForSelectorAsync("main, article, .content", new PageWaitForSelectorOptions
+            {
+                Timeout = 10000
+            });
+
+            // Extrair dados básicos (AJUSTAR SELETORES CONFORME HTML REAL)
+            var noticia = new NoticiaBasica
+            {
+                Url = url,
+                Titulo = await page.Locator("h1").TextContentAsync() ?? "Sem título",
+                DataPublicacao = await page.Locator(".publish-date, .date").TextContentAsync() ?? "",
+                Categoria = await page.Locator(".category, .tag").FirstAsync().TextContentAsync() ?? "",
+                Resumo = await page.Locator(".summary, .excerpt").TextContentAsync() ?? "",
+                DataColeta = DateTime.Now
+            };
+
+            LoggingTask.RegistrarDebug($"✅ Dados extraídos: {noticia.Titulo}");
+            
+            await page.Context.CloseAsync();
+            return noticia;
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro(ex, $"NavigationTask.ExtrairDadosBasicos({url})");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Finalizar recursos do Playwright (chama Playwright)
+    /// </summary>
+    public async Finalizar()
+    {
+        await Playwright.Finalizar();
+        LoggingTask.RegistrarInfo("NavigationTask finalizada");
+    }
+}
+
+/// <summary>
+/// Classe para dados básicos de uma notícia
+/// </summary>
+public class NoticiaBasica
+{
+    public string Url { get; set; } = string.Empty;
+    public string Titulo { get; set; } = string.Empty;
+    public string DataPublicacao { get; set; } = string.Empty;
+    public string Categoria { get; set; } = string.Empty;
+    public string Resumo { get; set; } = string.Empty;
+    public DateTime DataColeta { get; set; }
 }
 ```
 
 ---
 
-## Seletores
+## 6. Métodos Mais Usados
 
-### Tipos de Seletores
-
-#### 1. CSS Selector
-```csharp
-await page.ClickAsync("button.submit");
-await page.ClickAsync("#loginBtn");
-await page.ClickAsync("div > button:first-child");
-```
-
-#### 2. Text Selector
-```csharp
-await page.ClickAsync("text=Entrar");
-await page.ClickAsync("text=/Cadastr(o|ar)/i"); // Regex
-```
-
-#### 3. XPath
-```csharp
-await page.ClickAsync("xpath=//button[@type='submit']");
-```
-
-#### 4. Role Selector (Recomendado)
-```csharp
-await page.GetByRole(AriaRole.Button, new() { Name = "Entrar" }).ClickAsync();
-await page.GetByRole(AriaRole.Textbox, new() { Name = "Email" }).FillAsync("test@email.com");
-```
-
-#### 5. Test ID (Melhor Prática)
-```csharp
-// HTML: <button data-testid="submit-btn">Enviar</button>
-await page.GetByTestId("submit-btn").ClickAsync();
-```
-
-#### 6. Label
-```csharp
-await page.GetByLabel("Nome completo").FillAsync("João Silva");
-```
-
-#### 7. Placeholder
-```csharp
-await page.GetByPlaceholder("Digite seu email").FillAsync("email@example.com");
-```
-
-### Combinando Seletores
+### 6.1. Navegação Básica
 
 ```csharp
-// Filho direto
-await page.Locator("div.form >> button").ClickAsync();
+// Navegar para uma página
+await page.GotoAsync("https://exemplo.com");
 
-// Múltiplos seletores
-await page.Locator("button.submit, button.enviar").ClickAsync();
-
-// Filtrar por texto
-await page.Locator("li").Filter(new() { HasText = "Ativo" }).ClickAsync();
-```
-
----
-
-## Interações
-
-### Cliques
-
-```csharp
-// Clique simples
-await page.ClickAsync("button");
-
-// Duplo clique
-await page.DblClickAsync("div.item");
-
-// Clique com botão direito
-await page.ClickAsync("div", new() { Button = MouseButton.Right });
-
-// Clique com modificadores
-await page.ClickAsync("a", new() { Modifiers = new[] { KeyboardModifier.Control } });
-
-// Forçar clique (ignora verificações)
-await page.ClickAsync("button", new() { Force = true });
-```
-
-### Preencher Campos
-
-```csharp
-// Preencher texto
-await page.FillAsync("input#name", "João Silva");
-
-// Limpar e preencher
-await page.FillAsync("input#email", "");
-await page.FillAsync("input#email", "novo@email.com");
-
-// Digitar caractere por caractere
-await page.TypeAsync("input#search", "Buscar isto", new() { Delay = 100 });
-```
-
-### Teclas
-
-```csharp
-// Pressionar tecla
-await page.PressAsync("input", "Enter");
-await page.PressAsync("input", "Tab");
-
-// Combinações
-await page.PressAsync("input", "Control+A");
-await page.PressAsync("body", "Control+S");
-
-// Múltiplas teclas
-await page.Keyboard.DownAsync("Shift");
-await page.ClickAsync("text=Item 1");
-await page.ClickAsync("text=Item 5");
-await page.Keyboard.UpAsync("Shift");
-```
-
-### Select (Dropdown)
-
-```csharp
-// Por valor
-await page.SelectOptionAsync("select#country", "BR");
-
-// Por texto visível
-await page.SelectOptionAsync("select#country", new SelectOptionValue { Label = "Brasil" });
-
-// Múltiplas opções
-await page.SelectOptionAsync("select#tags", new[] { "tag1", "tag2", "tag3" });
-```
-
-### Checkbox e Radio
-
-```csharp
-// Marcar
-await page.CheckAsync("input#terms");
-
-// Desmarcar
-await page.UncheckAsync("input#newsletter");
-
-// Alternar
-if (await page.IsCheckedAsync("input#remember"))
-    await page.UncheckAsync("input#remember");
-else
-    await page.CheckAsync("input#remember");
-```
-
-### Upload de Arquivos
-
-```csharp
-// Upload único
-await page.SetInputFilesAsync("input[type='file']", "documento.pdf");
-
-// Upload múltiplo
-await page.SetInputFilesAsync("input[type='file']", new[] 
-{ 
-    "arquivo1.pdf", 
-    "arquivo2.pdf" 
-});
-
-// Remover arquivo
-await page.SetInputFilesAsync("input[type='file']", new string[0]);
-```
-
-### Hover (Passar o mouse)
-
-```csharp
-await page.HoverAsync("button.menu");
-await page.ClickAsync("li.dropdown-item");
-```
-
-### Drag and Drop
-
-```csharp
-await page.DragAndDropAsync("#source", "#target");
-
-// Ou manualmente
-await page.HoverAsync("#source");
-await page.Mouse.DownAsync();
-await page.HoverAsync("#target");
-await page.Mouse.UpAsync();
-```
-
----
-
-## Navegação
-
-### Ir para URL
-
-```csharp
-// Navegar
-await page.GotoAsync("https://example.com");
-
-// Com opções
-await page.GotoAsync("https://example.com", new()
+// Navegar com opções específicas
+await page.GotoAsync("https://exemplo.com", new PageGotoOptions
 {
-    WaitUntil = WaitUntilState.NetworkIdle,
-    Timeout = 30000 // 30 segundos
+    Timeout = 30000,
+    WaitUntil = WaitUntilState.NetworkIdle // ou DOMContentLoaded, Load
 });
-```
 
-### Navegação do Navegador
-
-```csharp
-// Voltar
+// Voltar e avançar no histórico
 await page.GoBackAsync();
-
-// Avançar
 await page.GoForwardAsync();
 
-// Recarregar
+// Recarregar página
 await page.ReloadAsync();
 ```
 
-### Obter Informações
+---
+
+### 6.2. Como Conseguir e Configurar Seletores
+
+#### Tipos de seletores mais usados:
 
 ```csharp
-// URL atual
-string url = page.Url;
+// 1. CSS Selector (mais comum)
+var elemento = page.Locator("button.submit");
+var elemento = page.Locator("#login-btn");
+var elemento = page.Locator("div.content > p:first-child");
 
-// Título da página
-string title = await page.TitleAsync();
+// 2. Por texto visível
+var elemento = page.Locator("text=Entrar");
+var elemento = page.Locator("text=/Login|Entrar/i"); // regex case-insensitive
+
+// 3. Por atributo data
+var elemento = page.Locator("[data-testid='submit-button']");
+var elemento = page.Locator("[data-id='123']");
+
+// 4. XPath (quando CSS não é suficiente)
+var elemento = page.Locator("xpath=//button[@type='submit' and contains(text(), 'Enviar')]");
+
+// 5. Combinação de seletores
+var elemento = page.Locator("div.form >> button.submit"); // dentro de
+var elemento = page.Locator("button:has-text('Salvar')"); // que contém texto
+```
+
+#### Como descobrir seletores no navegador:
+
+1. Abrir DevTools (F12)
+2. Usar ferramenta de seleção (Ctrl+Shift+C)
+3. Clicar no elemento desejado
+4. Copiar seletor CSS ou criar XPath
+
+---
+
+### 6.3. Cliques em Seletores
+
+```csharp
+// Clique simples (com auto-wait)
+await page.Locator("button.submit").ClickAsync();
+
+// Clique com timeout personalizado
+await page.Locator("button").ClickAsync(new LocatorClickOptions
+{
+    Timeout = 5000 // 5 segundos
+});
+
+// Clique duplo
+await page.Locator("div.item").DblClickAsync();
+
+// Clique com botão direito
+await page.Locator("div").ClickAsync(new LocatorClickOptions
+{
+    Button = MouseButton.Right
+});
+
+// Forçar clique (ignorar verificações)
+await page.Locator("button").ClickAsync(new LocatorClickOptions
+{
+    Force = true
+});
+
+// Clique em coordenadas específicas do elemento
+await page.Locator("canvas").ClickAsync(new LocatorClickOptions
+{
+    Position = new Position { X = 100, Y = 50 }
+});
 ```
 
 ---
 
-## Screenshots e PDFs
-
-### Screenshots
+### 6.4. Hover + Click (Menu Dropdown)
 
 ```csharp
-// Screenshot da página inteira
-await page.ScreenshotAsync(new() 
-{ 
-    Path = "pagina.png",
-    FullPage = true 
+// Hover simples
+await page.Locator("button.menu").HoverAsync();
+
+// Hover + aguardar submenu + clicar
+await page.Locator("button.menu").HoverAsync();
+
+// Aguardar submenu ficar visível
+await page.Locator("ul.submenu").WaitForAsync(new LocatorWaitForOptions
+{
+    State = WaitForSelectorState.Visible,
+    Timeout = 5000
 });
 
-// Screenshot de um elemento
-var element = page.Locator("div.content");
-await element.ScreenshotAsync(new() { Path = "elemento.png" });
+// Clicar no item do submenu
+await page.Locator("ul.submenu li a[href='/categoria']").ClickAsync();
 
-// Screenshot em memória
-byte[] screenshot = await page.ScreenshotAsync();
-```
-
-### PDFs
-
-```csharp
-// Gerar PDF (apenas em Chromium)
-await page.PdfAsync(new()
+// Versão mais robusta com try-catch
+try 
 {
-    Path = "documento.pdf",
-    Format = "A4",
-    PrintBackground = true,
-    Margin = new()
+    await page.Locator("nav.menu > li.dropdown").HoverAsync();
+    
+    // Aguardar dropdown aparecer
+    await page.WaitForSelectorAsync("nav.menu .dropdown-menu", new PageWaitForSelectorOptions
     {
-        Top = "1cm",
-        Right = "1cm",
-        Bottom = "1cm",
-        Left = "1cm"
-    }
-});
-```
-
-### Vídeos
-
-```csharp
-var context = await browser.NewContextAsync(new()
+        State = WaitForSelectorState.Visible,
+        Timeout = 3000
+    });
+    
+    await page.Locator(".dropdown-menu a:has-text('Tecnologia')").ClickAsync();
+}
+catch (TimeoutException)
 {
-    RecordVideoDir = "videos/",
-    RecordVideoSize = new() { Width = 1280, Height = 720 }
-});
-
-var page = await context.NewPageAsync();
-// ... automação ...
-
-await context.CloseAsync();
-// Vídeo salvo em videos/
+    LoggingTask.RegistrarAviso("Menu dropdown não abriu no tempo esperado", "NavigationTask");
+}
 ```
 
 ---
 
-## Esperas e Timeouts
+### 6.5. Esperas Explícitas
 
-### Esperas Automáticas
-
-Playwright espera automaticamente por:
-- Elemento estar visível
-- Elemento estar habilitado
-- Elemento estar estável (não animando)
-
-### Esperas Explícitas
+#### Esperar elemento aparecer na tela:
 
 ```csharp
-// Esperar por seletor
-await page.WaitForSelectorAsync("div.resultado");
-
-// Esperar por estado de carregamento
-await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
-await page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
-
-// Esperar por URL
-await page.WaitForURLAsync("**/dashboard");
-
-// Esperar por função
-await page.WaitForFunctionAsync("() => document.readyState === 'complete'");
-
-// Esperar por timeout
-await page.WaitForTimeoutAsync(3000); // 3 segundos (evite usar)
-```
-
-### Configurar Timeouts
-
-```csharp
-// Timeout global do contexto
-var context = await browser.NewContextAsync(new()
+// Esperar elemento ficar visível (mais usado)
+await page.Locator("div.resultado").WaitForAsync(new LocatorWaitForOptions
 {
-    DefaultTimeout = 60000 // 60 segundos
+    State = WaitForSelectorState.Visible,
+    Timeout = 30000 // 30 segundos
 });
 
-// Timeout de navegação
-await page.GotoAsync("https://example.com", new()
+// Esperar elemento existir no DOM (mesmo que invisível)
+await page.Locator("div.hidden-content").WaitForAsync(new LocatorWaitForOptions
+{
+    State = WaitForSelectorState.Attached,
+    Timeout = 10000
+});
+
+// Esperar elemento desaparecer
+await page.Locator("div.loading-spinner").WaitForAsync(new LocatorWaitForOptions
+{
+    State = WaitForSelectorState.Hidden,
+    Timeout = 15000
+});
+
+// Esperar elemento ser removido do DOM
+await page.Locator("div.temp-message").WaitForAsync(new LocatorWaitForOptions
+{
+    State = WaitForSelectorState.Detached
+});
+```
+
+#### Esperas de condições da página:
+
+```csharp
+// Esperar URL mudar
+await page.WaitForURLAsync("**/success");
+await page.WaitForURLAsync("https://exemplo.com/dashboard");
+
+// Esperar carregamento da rede
+await page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions
 {
     Timeout = 30000
 });
 
-// Timeout de ação
-await page.ClickAsync("button", new()
+// Esperar DOM carregar
+await page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
+
+// Esperar função JavaScript retornar true
+await page.WaitForFunctionAsync("() => document.readyState === 'complete'");
+
+// Esperar condição personalizada
+await page.WaitForFunctionAsync("() => document.querySelectorAll('article').length >= 10");
+```
+
+#### Esperas com timeout personalizados:
+
+```csharp
+// Timeout longo para elementos que demoram
+await page.Locator("div.slow-loading").WaitForAsync(new LocatorWaitForOptions
 {
-    Timeout = 5000
+    Timeout = 60000 // 1 minuto
+});
+
+// Timeout curto para verificações rápidas
+await page.Locator("div.error-message").WaitForAsync(new LocatorWaitForOptions
+{
+    Timeout = 2000 // 2 segundos
+});
+
+// Usar timeout da configuração
+await page.Locator("div.content").WaitForAsync(new LocatorWaitForOptions
+{
+    Timeout = _config.Navegacao.TimeoutSegundos * 1000
 });
 ```
 
 ---
 
-## Exemplos Práticos
-
-### Exemplo 1: Login em Sistema
+### 6.6. Extração de Dados dos Seletores
 
 ```csharp
-async Task FazerLogin(IPage page, string email, string senha)
+// Extrair texto visível
+string titulo = await page.Locator("h1.title").TextContentAsync();
+
+// Extrair texto interno (sem HTML)
+string conteudo = await page.Locator("div.content").InnerTextAsync();
+
+// Extrair HTML interno
+string html = await page.Locator("div.article").InnerHTMLAsync();
+
+// Extrair atributos
+string link = await page.Locator("a.read-more").GetAttributeAsync("href");
+string imagem = await page.Locator("img.thumbnail").GetAttributeAsync("src");
+string dataId = await page.Locator("article").GetAttributeAsync("data-id");
+
+// Extrair múltiplos elementos
+var titulos = await page.Locator("h2.article-title").AllTextContentsAsync();
+var links = await page.Locator("article a.permalink").AllAsync();
+
+// Iterar sobre múltiplos elementos
+foreach (var item in links)
 {
-    await page.GotoAsync("https://sistema.com/login");
+    string href = await item.GetAttributeAsync("href");
+    string texto = await item.TextContentAsync();
     
-    await page.FillAsync("input#email", email);
-    await page.FillAsync("input#password", senha);
-    await page.ClickAsync("button[type='submit']");
-    
-    // Esperar redirecionamento
-    await page.WaitForURLAsync("**/dashboard");
-    
-    Console.WriteLine("Login realizado com sucesso!");
+    LoggingTask.RegistrarDebug($"Link encontrado: {texto} -> {href}");
 }
-```
 
-### Exemplo 2: Extrair Dados de Tabela
+// Contar elementos
+int totalArtigos = await page.Locator("article.news-item").CountAsync();
 
-```csharp
-async Task<List<Produto>> ExtrairProdutos(IPage page)
+// Verificar se elemento existe
+bool temResultados = await page.Locator("div.results").CountAsync() > 0;
+
+// Extrair dados estruturados
+var noticias = new List<Noticia>();
+var articles = await page.Locator("article.news").AllAsync();
+
+foreach (var article in articles)
 {
-    await page.GotoAsync("https://loja.com/produtos");
-    
-    var produtos = new List<Produto>();
-    var linhas = await page.Locator("table tbody tr").AllAsync();
-    
-    foreach (var linha in linhas)
+    var noticia = new Noticia
     {
-        var nome = await linha.Locator("td:nth-child(1)").TextContentAsync();
-        var precoTexto = await linha.Locator("td:nth-child(2)").TextContentAsync();
-        var preco = decimal.Parse(precoTexto.Replace("R$", "").Trim());
-        
-        produtos.Add(new Produto { Nome = nome, Preco = preco });
+        Titulo = await article.Locator("h2.title").TextContentAsync(),
+        Url = await article.Locator("a.permalink").GetAttributeAsync("href"),
+        DataTexto = await article.Locator(".publish-date").TextContentAsync(),
+        Resumo = await article.Locator(".summary").TextContentAsync()
+    };
+    
+    noticias.Add(noticia);
+}
+```
+
+---
+
+### 6.7. Preenchimento de Formulários
+
+```csharp
+// Preencher campos de texto
+await page.Locator("input#name").FillAsync("João Silva");
+await page.Locator("textarea#message").FillAsync("Mensagem de teste");
+
+// Limpar campo e preencher
+await page.Locator("input#email").FillAsync(""); // limpar
+await page.Locator("input#email").FillAsync("novo@email.com");
+
+// Digitar com delay (simular digitação humana)
+await page.Locator("input#search").TypeAsync("Playwright", new LocatorTypeOptions
+{
+    Delay = 100 // 100ms entre cada tecla
+});
+
+// Pressionar teclas especiais
+await page.Locator("input").PressAsync("Enter");
+await page.Locator("input").PressAsync("Tab");
+await page.Locator("input").PressAsync("Escape");
+
+// Combinações de teclas
+await page.Locator("input").PressAsync("Control+A"); // Selecionar tudo
+await page.Locator("input").PressAsync("Control+C"); // Copiar
+```
+
+---
+
+### 6.8. Verificações e Validações
+
+```csharp
+// Verificar se elemento está visível
+bool isVisible = await page.Locator("button.submit").IsVisibleAsync();
+
+// Verificar se elemento está habilitado
+bool isEnabled = await page.Locator("button").IsEnabledAsync();
+
+// Verificar se checkbox está marcado
+bool isChecked = await page.Locator("input[type='checkbox']").IsCheckedAsync();
+
+// Usar verificações em condições
+if (await page.Locator("div.error").IsVisibleAsync())
+{
+    string errorMessage = await page.Locator("div.error").TextContentAsync();
+    LoggingTask.RegistrarErro(new Exception(errorMessage), "Erro na página");
+}
+
+// Aguardar condição ser verdadeira
+await page.Locator("button.submit").WaitForAsync(new LocatorWaitForOptions
+{
+    State = WaitForSelectorState.Visible
+});
+
+if (await page.Locator("button.submit").IsEnabledAsync())
+{
+    await page.Locator("button.submit").ClickAsync();
+}
+```
+
+---
+
+### 6.9. Screenshots para Debug
+
+```csharp
+// Screenshot da página inteira
+await page.ScreenshotAsync(new PageScreenshotOptions
+{
+    Path = "debug-pagina.png",
+    FullPage = true
+});
+
+// Screenshot de um elemento específico
+await page.Locator("div.content").ScreenshotAsync(new LocatorScreenshotOptions
+{
+    Path = "debug-elemento.png"
+});
+
+// Screenshot condicionado (só em caso de erro)
+try
+{
+    await page.Locator("button").ClickAsync();
+}
+catch (Exception ex)
+{
+    await page.ScreenshotAsync(new PageScreenshotOptions
+    {
+        Path = $"erro-{DateTime.Now:yyyyMMdd-HHmmss}.png"
+    });
+    
+    LoggingTask.RegistrarErro(ex, "Erro ao clicar no botão");
+    throw;
+}
+```
+
+---
+
+### 6.10. Exemplo Prático: Scraping com Retry
+
+```csharp
+/// <summary>
+/// Navegar para uma página com retry automático em caso de falha
+/// </summary>
+public async string NavegarComRetry(string url, int maxTentativas = 3)
+{
+    int tentativa = 0;
+    
+    while (tentativa < maxTentativas)
+    {
+        try
+        {
+            tentativa++;
+            LoggingTask.RegistrarDebug($"Tentativa {tentativa}/{maxTentativas} para {url}");
+
+            var page = await CriarPagina();
+
+            // Navegar com timeout
+            await page.GotoAsync(url, new PageGotoOptions
+            {
+                Timeout = _config.Navegacao.TimeoutSegundos * 1000,
+                WaitUntil = WaitUntilState.DOMContentLoaded
+            });
+
+            // Aguardar conteúdo principal carregar
+            await page.WaitForSelectorAsync("main, #content, .content", new PageWaitForSelectorOptions
+            {
+                Timeout = 10000
+            });
+
+            // Extrair conteúdo HTML
+            string html = await page.ContentAsync();
+            
+            await page.Context.CloseAsync();
+
+            LoggingTask.RegistrarInfo($"✅ Página carregada com sucesso: {url}");
+            return html;
+        }
+        catch (TimeoutException ex)
+        {
+            LoggingTask.RegistrarAviso($"Timeout na tentativa {tentativa}: {ex.Message}", "NavegarComRetry");
+            
+            if (tentativa >= maxTentativas)
+            {
+                LoggingTask.RegistrarErro(ex, $"Todas as tentativas falharam para {url}");
+                throw;
+            }
+
+            // Aguardar antes da próxima tentativa
+            await Task.Delay(_config.Scraping.DelayAposErro);
+        }
     }
-    
-    return produtos;
+
+    throw new Exception($"Falha ao navegar para {url} após {maxTentativas} tentativas");
 }
 ```
 
-### Exemplo 3: Preencher Formulário Complexo
+---
+
+## Recursos Avançados (Opcional)
+
+### Interceptação de Requests
 
 ```csharp
-async Task PreencherCadastro(IPage page)
+// Bloquear recursos desnecessários
+await page.RouteAsync("**/*.{png,jpg,jpeg,gif,svg,css,woff,woff2}", route => route.AbortAsync());
+
+// Interceptar e modificar requests
+await page.RouteAsync("**/api/**", async route =>
 {
-    await page.GotoAsync("https://site.com/cadastro");
+    var headers = route.Request.Headers.ToDictionary(h => h.Key, h => h.Value);
+    headers["Authorization"] = "Bearer token123";
     
-    // Dados pessoais
-    await page.FillAsync("input#nome", "João Silva");
-    await page.FillAsync("input#email", "joao@email.com");
-    await page.FillAsync("input#telefone", "(11) 98765-4321");
-    
-    // Data de nascimento
-    await page.FillAsync("input#data-nascimento", "01/01/1990");
-    
-    // Select
-    await page.SelectOptionAsync("select#estado", "SP");
-    
-    // Radio button
-    await page.ClickAsync("input[name='genero'][value='M']");
-    
-    // Checkboxes
-    await page.CheckAsync("input#aceito-termos");
-    await page.CheckAsync("input#receber-newsletter");
-    
-    // Upload
-    await page.SetInputFilesAsync("input#documento", "identidade.pdf");
-    
-    // Submit
-    await page.ClickAsync("button[type='submit']");
-    
-    // Esperar mensagem de sucesso
-    await page.WaitForSelectorAsync("div.success");
-    var mensagem = await page.TextContentAsync("div.success");
-    Console.WriteLine($"Sucesso: {mensagem}");
-}
+    await route.ContinueAsync(new RouteContinueOptions
+    {
+        Headers = headers
+    });
+});
 ```
 
-### Exemplo 4: Automação com Múltiplas Páginas
+### Executar JavaScript
 
 ```csharp
-async Task ProcessarMultiplasPaginas()
-{
-    using var playwright = await Playwright.CreateAsync();
-    await using var browser = await playwright.Chromium.LaunchAsync();
-    var context = await browser.NewContextAsync();
-    
-    // Abrir múltiplas páginas
-    var page1 = await context.NewPageAsync();
-    var page2 = await context.NewPageAsync();
-    
-    // Trabalhar em paralelo
-    var task1 = page1.GotoAsync("https://site1.com");
-    var task2 = page2.GotoAsync("https://site2.com");
-    
-    await Task.WhenAll(task1, task2);
-    
-    // Processar cada página
-    var dados1 = await ExtrairDados(page1);
-    var dados2 = await ExtrairDados(page2);
-}
+// Scroll até o final da página
+await page.EvaluateAsync("window.scrollTo(0, document.body.scrollHeight)");
+
+// Obter dados do JavaScript
+string pageTitle = await page.EvaluateAsync<string>("document.title");
+int articleCount = await page.EvaluateAsync<int>("document.querySelectorAll('article').length");
+
+// Executar função complexa
+var dados = await page.EvaluateAsync<dynamic>(@"
+    () => {
+        const articles = Array.from(document.querySelectorAll('article'));
+        return articles.map(article => ({
+            title: article.querySelector('h2')?.textContent,
+            link: article.querySelector('a')?.href
+        }));
+    }
+");
 ```
 
 ---
 
 ## Boas Práticas
 
-### 1. Use Locators Resilientes
+### ✅ Fazer
+
 ```csharp
-// ✅ BOM - usa atributo de teste
-await page.GetByTestId("submit-btn").ClickAsync();
+// Usar configurações do Config.cs
+var timeout = _config.Navegacao.TimeoutSegundos * 1000;
 
-// ✅ BOM - usa role semântico
-await page.GetByRole(AriaRole.Button, new() { Name = "Enviar" }).ClickAsync();
+// Aguardar elementos antes de interagir
+await page.WaitForSelectorAsync("button");
+await page.Locator("button").ClickAsync();
 
-// ❌ RUIM - frágil a mudanças de CSS
-await page.ClickAsync("div > div:nth-child(3) > button");
+// Logar operações importantes
+LoggingTask.RegistrarInfo("Iniciando extração de dados");
+
+// Fechar contextos para liberar memória
+await page.Context.CloseAsync();
+
+// Tratar exceções específicas
+try { }
+catch (TimeoutException ex) { /* retry logic */ }
 ```
 
-### 2. Reutilize Contextos
+### ❌ Evitar
+
 ```csharp
-// Uma vez por sessão
-var context = await browser.NewContextAsync(new()
-{
-    Locale = "pt-BR",
-    Viewport = new() { Width = 1920, Height = 1080 },
-    UserAgent = "..."
-});
+// Thread.Sleep (usar Task.Delay e esperas do Playwright)
+Thread.Sleep(5000); // ❌
 
-// Múltiplas páginas no mesmo contexto
-var page1 = await context.NewPageAsync();
-var page2 = await context.NewPageAsync();
-```
+// Hardcoded timeouts (usar Config)
+await page.WaitForTimeout(30000); // ❌
 
-### 3. Gerencie Recursos Corretamente
-```csharp
-using var playwright = await Playwright.CreateAsync();
-await using var browser = await playwright.Chromium.LaunchAsync();
-await using var context = await browser.NewContextAsync();
-await using var page = await context.NewPageAsync();
+// Ignorar erros sem log
+catch (Exception) { } // ❌
 
-// Recursos liberados automaticamente
-```
-
-### 4. Configure Timeouts Apropriados
-```csharp
-// Para ações rápidas
-await page.ClickAsync("button", new() { Timeout = 5000 });
-
-// Para operações lentas
-await page.WaitForSelectorAsync("div.resultado", new() { Timeout = 60000 });
-```
-
-### 5. Trate Erros Específicos
-```csharp
-try
-{
-    await page.ClickAsync("button", new() { Timeout = 5000 });
-}
-catch (TimeoutException)
-{
-    Console.WriteLine("Elemento não encontrado no tempo esperado");
-    await page.ScreenshotAsync(new() { Path = "erro.png" });
-}
-```
-
-### 6. Use Mode Headless em Produção
-```csharp
-var browser = await playwright.Chromium.LaunchAsync(new()
-{
-    Headless = Environment.GetEnvironmentVariable("ENV") == "production"
-});
-```
-
----
-
-## ⚠️ Erros Comuns e Soluções
-
-### Erro: "Executable doesn't exist"
-
-**Problema:** Navegadores não foram instalados.
-
-**Solução:**
-```bash
-# Compile o projeto primeiro
-dotnet build
-
-# Depois instale os navegadores
-pwsh bin/Debug/net9.0/playwright.ps1 install
-
-# No Linux/Mac:
-./bin/Debug/net9.0/playwright.sh install
-```
-
-### Erro: "Timeout 30000ms exceeded"
-
-**Problema:** Elemento não foi encontrado ou página demorou muito para carregar.
-
-**Soluções:**
-1. Aumentar o timeout:
-```csharp
-await page.WaitForSelectorAsync("button", new() { Timeout = 60000 });
-```
-
-2. Verificar se o seletor está correto
-3. Aguardar o carregamento da página primeiro:
-```csharp
-await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
-```
-
-### Erro: "Target closed"
-
-**Problema:** Página foi fechada enquanto tentava interagir.
-
-**Solução:**
-```csharp
-if (!page.IsClosed)
-{
-    await page.ClickAsync("button");
-}
-```
-
-### Erro: Elemento não clicável
-
-**Problema:** Elemento está coberto por outro elemento.
-
-**Solução:**
-```csharp
-// Scroll até o elemento
-await page.Locator("button").ScrollIntoViewIfNeededAsync();
-
-// Depois clique
-await page.ClickAsync("button");
+// Deixar páginas abertas sem fechar contextos
+// Sempre feche com page.Context.CloseAsync()
 ```
 
 ---
 
 ## Recursos Adicionais
 
-- **Documentação Oficial**: https://playwright.dev/dotnet/
-- **API Reference**: https://playwright.dev/dotnet/docs/api/class-playwright
-- **Exemplos**: https://github.com/microsoft/playwright-dotnet
-- **Trace Viewer**: Para debug visual de automações
+- **Documentação Oficial:** https://playwright.dev/dotnet/
+- **API Reference:** https://playwright.dev/dotnet/docs/api/class-playwright
+- **Seletores:** https://playwright.dev/dotnet/docs/selectors
+- **Exemplos:** https://github.com/microsoft/playwright-dotnet
+- **CodeGen:** `pwsh bin\Debug\net9.0\playwright.ps1 codegen https://site.com` (gera código automaticamente)
 
 ---
 
-**Dica Final**: Use o **Codegen** do Playwright para gerar código automaticamente:
-```bash
-pwsh bin/Debug/net9.0/playwright.ps1 codegen https://exemplo.com
-```
-
-**Versão:** 1.0  
+**Versão:** 4.0 (Tutorial Completo)  
 **Última atualização:** Novembro 2025

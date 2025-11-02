@@ -1,514 +1,926 @@
 # Quartz.NET - Agendamento de Tarefas
 
-## Índice
-1. [Introdução](#introdução)
-2. [Instalação](#instalação)
-3. [Conceitos Básicos](#conceitos-básicos)
-4. [Agendar Tarefas](#agendar-tarefas)
-5. [Cron Expressions](#cron-expressions)
-6. [Exemplos Práticos](#exemplos-práticos)
+## O que é Quartz.NET
 
----
+**Quartz.NET** é uma biblioteca de agendamento de jobs (tarefas) para .NET que permite executar código automaticamente em horários específicos, intervalos regulares ou com base em triggers complexos.
 
-## Introdução
+**Onde é usado no AdrenalineSpy:**
+- Execução automática do scraping em horários programados
+- Coleta periódica de notícias (a cada X horas/dias)
+- Geração automática de relatórios em horários específicos
+- Limpeza automática de logs e arquivos antigos
+- Monitoramento da saúde do sistema em intervalos regulares
+- Execução de backups automáticos dos dados coletados
 
-**Quartz.NET** é um agendador de tarefas robusto para .NET, permitindo executar jobs em horários específicos ou intervalos regulares.
+**Cenários típicos**: Scraping diário às 06:00, relatórios semanais domingo 22:00, limpeza mensal dia 1º 02:00.
 
-### Vantagens
-- ✅ Cron expressions
-- ✅ Jobs persistentes
-- ✅ Clustering
-- ✅ Missfire handling
-- ✅ Listeners e plugins
+## Como Instalar
 
----
+### 1. Instalar Pacotes Quartz.NET
 
-## Instalação
-
-```bash
+```powershell
 dotnet add package Quartz
+dotnet add package Quartz.Extensions.Hosting
 ```
 
----
+### 2. Verificar .csproj
 
-## Conceitos Básicos
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <PackageReference Include="Quartz" Version="3.8.0" />
+    <PackageReference Include="Quartz.Extensions.Hosting" Version="3.8.0" />
+  </ItemGroup>
+</Project>
+```
 
-### Componentes Principais
+### 3. Configurar Hosting (Opcional)
 
-1. **Scheduler**: Orquestrador principal
-2. **Job**: Tarefa a ser executada
-3. **Trigger**: Define quando o job será executado
-4. **JobDetail**: Metadados do job
+Para aplicações que rodam como serviço Windows:
 
----
+```powershell
+dotnet add package Microsoft.Extensions.Hosting
+```
 
-## Agendar Tarefas
+## Implementar no AutomationSettings.json
 
-### Job Simples
+Adicione configurações de agendamento na raiz do JSON:
+
+```json
+{
+  "Navegacao": {
+    "UrlBase": "https://www.adrenaline.com.br",
+    "DelayEntrePaginas": 2000
+  },
+  "Agendamento": {
+    "HabilitarQuartz": true,
+    "ExecutarAoInicializar": false,
+    "TimeZone": "E. South America Standard Time",
+    "ConfiguracaoJobs": {
+      "JobScrapingPrincipal": {
+        "Habilitado": true,
+        "CronExpression": "0 0 6,12,18 * * ?",
+        "Descricao": "Scraping principal às 06:00, 12:00 e 18:00",
+        "TipoJob": "ScrapingCompleto"
+      },
+      "JobRelatoriosDiarios": {
+        "Habilitado": true,
+        "CronExpression": "0 30 22 * * ?",
+        "Descricao": "Relatórios diários às 22:30",
+        "TipoJob": "GerarRelatorios"
+      },
+      "JobLimpezaSemanal": {
+        "Habilitado": true,
+        "CronExpression": "0 0 2 ? * SUN",
+        "Descricao": "Limpeza semanal domingo às 02:00",
+        "TipoJob": "LimpezaArquivos"
+      },
+      "JobBackupMensal": {
+        "Habilitado": false,
+        "CronExpression": "0 0 3 1 * ?",
+        "Descricao": "Backup mensal dia 1º às 03:00",
+        "TipoJob": "BackupDados"
+      }
+    },
+    "ConfiguracaoScheduler": {
+      "Nome": "AdrenalineSpyScheduler",
+      "ThreadCount": 3,
+      "MaxConcurrencia": 2,
+      "MisfireThreshold": 60000
+    },
+    "Notificacoes": {
+      "NotificarSucesso": true,
+      "NotificarErro": true,
+      "NotificarAtraso": true,
+      "EmailNotificacoes": "admin@adrenalinespy.local"
+    }
+  },
+  "Database": {
+    "ConnectionString": "Server=localhost;Database=AdrenalineSpy;..."
+  },
+  "Logging": {
+    "Nivel": "Information",
+    "CaminhoArquivo": "logs/adrenaline-spy.log"
+  }
+}
+```
+
+**Configurações específicas do Quartz:**
+- **`CronExpression`**: Formato cron para definir quando executar
+- **`TipoJob`**: Identifica qual task executar
+- **`ConfiguracaoScheduler`**: Configurações do agendador
+- **`Notificacoes`**: Alertas sobre execução dos jobs
+
+## Implementar no Config.cs
+
+Adicione classes de configuração para agendamento:
+
+```csharp
+public class JobConfiguracao
+{
+    public bool Habilitado { get; set; } = true;
+    public string CronExpression { get; set; } = "0 0 6 * * ?";
+    public string Descricao { get; set; } = string.Empty;
+    public string TipoJob { get; set; } = string.Empty;
+}
+
+public class ConfiguracaoSchedulerConfig
+{
+    public string Nome { get; set; } = "AdrenalineSpyScheduler";
+    public int ThreadCount { get; set; } = 3;
+    public int MaxConcorrencia { get; set; } = 2;
+    public int MisfireThreshold { get; set; } = 60000;
+}
+
+public class NotificacoesConfig
+{
+    public bool NotificarSucesso { get; set; } = true;
+    public bool NotificarErro { get; set; } = true;
+    public bool NotificarAtraso { get; set; } = true;
+    public string EmailNotificacoes { get; set; } = string.Empty;
+}
+
+public class AgendamentoConfig
+{
+    public bool HabilitarQuartz { get; set; } = true;
+    public bool ExecutarAoInicializar { get; set; } = false;
+    public string TimeZone { get; set; } = "E. South America Standard Time";
+    public Dictionary<string, JobConfiguracao> ConfiguracaoJobs { get; set; } = new();
+    public ConfiguracaoSchedulerConfig ConfiguracaoScheduler { get; set; } = new();
+    public NotificacoesConfig Notificacoes { get; set; } = new();
+}
+
+public class Config
+{
+    // ... propriedades existentes ...
+    public AgendamentoConfig Agendamento { get; set; } = new();
+    
+    /// <summary>
+    /// Verifica se Quartz.NET está habilitado
+    /// </summary>
+    public bool QuartzHabilitado()
+    {
+        return Agendamento.HabilitarQuartz;
+    }
+
+    /// <summary>
+    /// Obtém jobs habilitados para agendamento
+    /// </summary>
+    public Dictionary<string, JobConfiguracao> ObterJobsHabilitados()
+    {
+        return Agendamento.ConfiguracaoJobs
+            .Where(kvp => kvp.Value.Habilitado)
+            .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+    }
+
+    /// <summary>
+    /// Obtém TimeZone configurado
+    /// </summary>
+    public TimeZoneInfo ObterTimeZone()
+    {
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById(Agendamento.TimeZone);
+        }
+        catch
+        {
+            LoggingTask.RegistrarAviso($"TimeZone '{Agendamento.TimeZone}' não encontrado, usando UTC");
+            return TimeZoneInfo.Utc;
+        }
+    }
+}
+```
+
+## Montar nas Tasks
+
+Crie a classe `SchedulingTask.cs` na pasta `Workflow/Tasks/`:
 
 ```csharp
 using Quartz;
 using Quartz.Impl;
+using Quartz.Impl.Matchers;
 
-// 1. Criar Job
-public class MeuJob : IJob
+namespace AdrenalineSpy.Workflow.Tasks;
+
+/// <summary>
+/// Gerencia agendamento de tarefas automatizadas para o AdrenalineSpy
+/// </summary>
+public static class SchedulingTask
 {
-    public async Task Execute(IJobExecutionContext context)
+    private static IScheduler? _scheduler;
+    private static readonly Dictionary<string, Type> _tiposJobs = new()
     {
-        Console.WriteLine($"Job executado às {DateTime.Now}");
-        await Task.CompletedTask;
-    }
-}
+        ["ScrapingCompleto"] = typeof(ScrapingCompletoJob),
+        ["GerarRelatorios"] = typeof(GerarRelatoriosJob),
+        ["LimpezaArquivos"] = typeof(LimpezaArquivosJob),
+        ["BackupDados"] = typeof(BackupDadosJob)
+    };
 
-// 2. Configurar e Iniciar
-class Program
-{
-    static async Task Main()
+    /// <summary>
+    /// Inicializa e configura o Quartz Scheduler
+    /// </summary>
+    public static async Task<bool> InicializarScheduler()
     {
-        // Criar scheduler
-        IScheduler scheduler = await StdSchedulerFactory.GetDefaultScheduler();
-        await scheduler.Start();
-        
-        // Definir job
-        IJobDetail job = JobBuilder.Create<MeuJob>()
-            .WithIdentity("meuJob", "grupo1")
-            .Build();
-        
-        // Definir trigger (executar a cada 10 segundos)
-        ITrigger trigger = TriggerBuilder.Create()
-            .WithIdentity("meuTrigger", "grupo1")
-            .StartNow()
-            .WithSimpleSchedule(x => x
-                .WithIntervalInSeconds(10)
-                .RepeatForever())
-            .Build();
-        
-        // Agendar
-        await scheduler.ScheduleJob(job, trigger);
-        
-        Console.WriteLine("Pressione qualquer tecla para parar...");
-        Console.ReadKey();
-        
-        await scheduler.Shutdown();
-    }
-}
-```
-
-### Job com Parâmetros
-
-```csharp
-public class JobComParametros : IJob
-{
-    public async Task Execute(IJobExecutionContext context)
-    {
-        // Obter dados do JobDataMap
-        JobDataMap dataMap = context.JobDetail.JobDataMap;
-        
-        string nome = dataMap.GetString("nome");
-        int quantidade = dataMap.GetInt("quantidade");
-        
-        Console.WriteLine($"Processando: {nome}, Qtd: {quantidade}");
-        
-        await Task.CompletedTask;
-    }
-}
-
-// Passar parâmetros
-IJobDetail job = JobBuilder.Create<JobComParametros>()
-    .WithIdentity("jobParams")
-    .UsingJobData("nome", "Produto X")
-    .UsingJobData("quantidade", 100)
-    .Build();
-```
-
----
-
-## Cron Expressions
-
-### Exemplos de Cron
-
-```csharp
-// Diariamente às 8:00
-.WithCronSchedule("0 0 8 * * ?")
-
-// De segunda a sexta às 9:00
-.WithCronSchedule("0 0 9 ? * MON-FRI")
-
-// A cada hora
-.WithCronSchedule("0 0 * * * ?")
-
-// A cada 5 minutos
-.WithCronSchedule("0 */5 * * * ?")
-
-// Todo dia 1º do mês às 00:00
-.WithCronSchedule("0 0 0 1 * ?")
-
-// A cada 30 segundos
-.WithCronSchedule("*/30 * * * * ?")
-```
-
-### Formato Cron
-
-```
-┌─── Segundo (0-59)
-│ ┌─── Minuto (0-59)
-│ │ ┌─── Hora (0-23)
-│ │ │ ┌─── Dia do mês (1-31)
-│ │ │ │ ┌─── Mês (1-12 ou JAN-DEC)
-│ │ │ │ │ ┌─── Dia da semana (1-7 ou SUN-SAT)
-│ │ │ │ │ │ ┌─── Ano (opcional)
-│ │ │ │ │ │ │
-* * * * * ? *
-```
-
-### Usar Cron
-
-```csharp
-ITrigger trigger = TriggerBuilder.Create()
-    .WithIdentity("cronTrigger")
-    .WithCronSchedule("0 0 8 * * ?") // 8:00 todos os dias
-    .Build();
-```
-
----
-
-## Exemplos Práticos
-
-### Exemplo 1: RPA Agendado Diariamente
-
-```csharp
-public class RPADiarioJob : IJob
-{
-    public async Task Execute(IJobExecutionContext context)
-    {
-        Console.WriteLine($"[{DateTime.Now}] Iniciando RPA Diário");
-        
         try
         {
-            // Sua automação aqui
-            await ExecutarRPA();
-            
-            Console.WriteLine($"[{DateTime.Now}] RPA concluído com sucesso");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[{DateTime.Now}] Erro no RPA: {ex.Message}");
-        }
-    }
-    
-    private async Task ExecutarRPA()
-    {
-        // Processar pedidos
-        // Gerar relatórios
-        // Enviar emails
-        await Task.Delay(1000); // Simular processamento
-    }
-}
-
-// Agendar para executar todo dia às 8:00
-class Program
-{
-    static async Task Main()
-    {
-        IScheduler scheduler = await StdSchedulerFactory.GetDefaultScheduler();
-        await scheduler.Start();
-        
-        IJobDetail job = JobBuilder.Create<RPADiarioJob>()
-            .WithIdentity("rpaDiario")
-            .Build();
-        
-        ITrigger trigger = TriggerBuilder.Create()
-            .WithIdentity("triggerDiario")
-            .WithCronSchedule("0 0 8 * * ?") // 8:00 AM
-            .Build();
-        
-        await scheduler.ScheduleJob(job, trigger);
-        
-        Console.WriteLine("RPA agendado para executar diariamente às 8:00");
-        Console.WriteLine("Pressione Enter para sair...");
-        Console.ReadLine();
-        
-        await scheduler.Shutdown();
-    }
-}
-```
-
-### Exemplo 2: Múltiplos Jobs
-
-```csharp
-public class ProcessarPedidosJob : IJob
-{
-    public async Task Execute(IJobExecutionContext context)
-    {
-        Console.WriteLine("Processando pedidos...");
-        await Task.Delay(500);
-    }
-}
-
-public class GerarRelatorioJob : IJob
-{
-    public async Task Execute(IJobExecutionContext context)
-    {
-        Console.WriteLine("Gerando relatório...");
-        await Task.Delay(500);
-    }
-}
-
-public class EnviarEmailJob : IJob
-{
-    public async Task Execute(IJobExecutionContext context)
-    {
-        Console.WriteLine("Enviando emails...");
-        await Task.Delay(500);
-    }
-}
-
-class Program
-{
-    static async Task Main()
-    {
-        IScheduler scheduler = await StdSchedulerFactory.GetDefaultScheduler();
-        await scheduler.Start();
-        
-        // Job 1: Processar pedidos a cada hora
-        var job1 = JobBuilder.Create<ProcessarPedidosJob>()
-            .WithIdentity("processarPedidos")
-            .Build();
-        
-        var trigger1 = TriggerBuilder.Create()
-            .WithIdentity("trigger1")
-            .WithCronSchedule("0 0 * * * ?") // A cada hora
-            .Build();
-        
-        // Job 2: Gerar relatório diariamente às 18:00
-        var job2 = JobBuilder.Create<GerarRelatorioJob>()
-            .WithIdentity("gerarRelatorio")
-            .Build();
-        
-        var trigger2 = TriggerBuilder.Create()
-            .WithIdentity("trigger2")
-            .WithCronSchedule("0 0 18 * * ?") // 18:00
-            .Build();
-        
-        // Job 3: Enviar email de segunda a sexta às 9:00
-        var job3 = JobBuilder.Create<EnviarEmailJob>()
-            .WithIdentity("enviarEmail")
-            .Build();
-        
-        var trigger3 = TriggerBuilder.Create()
-            .WithIdentity("trigger3")
-            .WithCronSchedule("0 0 9 ? * MON-FRI") // 9:00 seg-sex
-            .Build();
-        
-        await scheduler.ScheduleJob(job1, trigger1);
-        await scheduler.ScheduleJob(job2, trigger2);
-        await scheduler.ScheduleJob(job3, trigger3);
-        
-        Console.WriteLine("Jobs agendados:");
-        Console.WriteLine("- Processar pedidos: A cada hora");
-        Console.WriteLine("- Gerar relatório: Diariamente às 18:00");
-        Console.WriteLine("- Enviar email: Seg-Sex às 9:00");
-        
-        Console.ReadLine();
-        await scheduler.Shutdown();
-    }
-}
-```
-
-### Exemplo 3: Job com Dependência (Serilog)
-
-```csharp
-using Serilog;
-using Quartz;
-
-public class RPAComLoggingJob : IJob
-{
-    public async Task Execute(IJobExecutionContext context)
-    {
-        Log.Information("=== Iniciando Execução do Job ===");
-        Log.Information("Próxima execução: {ProximaExec}", context.NextFireTimeUtc);
-        
-        try
-        {
-            Log.Information("Processando itens...");
-            
-            for (int i = 1; i <= 5; i++)
+            if (!Config.Instancia.QuartzHabilitado())
             {
-                Log.Debug("Processando item {Item}", i);
-                await Task.Delay(100);
+                LoggingTask.RegistrarInfo("⏰ Quartz.NET desabilitado nas configurações");
+                return false;
             }
-            
-            Log.Information("Job concluído com sucesso");
+
+            LoggingTask.RegistrarInfo("🕒 Inicializando Quartz.NET Scheduler");
+
+            // Criar factory do scheduler
+            var factory = new StdSchedulerFactory();
+            _scheduler = await factory.GetScheduler();
+
+            // Configurar propriedades do scheduler
+            await ConfigurarScheduler();
+
+            // Registrar listener de eventos
+            await RegistrarListeners();
+
+            // Iniciar scheduler
+            await _scheduler.Start();
+
+            // Configurar jobs
+            await ConfigurarTodosJobs();
+
+            LoggingTask.RegistrarInfo("✅ Quartz Scheduler inicializado com sucesso");
+            return true;
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Erro na execução do job");
-            
-            // Requeue job se necessário
-            var exception = new JobExecutionException(ex)
-            {
-                RefireImmediately = true // Tentar novamente imediatamente
-            };
-            throw exception;
+            LoggingTask.RegistrarErro("Erro ao inicializar Quartz Scheduler", ex);
+            return false;
         }
-        finally
+    }
+
+    /// <summary>
+    /// Configura propriedades do scheduler
+    /// </summary>
+    private static async Task ConfigurarScheduler()
+    {
+        if (_scheduler == null) return;
+
+        var config = Config.Instancia.Agendamento.ConfiguracaoScheduler;
+        
+        // Configurações básicas já são aplicadas na criação
+        // Scheduler name, thread count, etc. são configurados via StdSchedulerFactory
+        
+        LoggingTask.RegistrarInfo($"🔧 Scheduler '{config.Nome}' configurado com {config.ThreadCount} threads");
+    }
+
+    /// <summary>
+    /// Registra listeners para eventos do scheduler
+    /// </summary>
+    private static async Task RegistrarListeners()
+    {
+        if (_scheduler == null) return;
+
+        var listener = new JobExecutionListener();
+        _scheduler.ListenerManager.AddJobListener(listener, GroupMatcher<JobKey>.AnyGroup());
+        
+        LoggingTask.RegistrarInfo("👂 Listeners de jobs registrados");
+    }
+
+    /// <summary>
+    /// Configura todos os jobs habilitados
+    /// </summary>
+    private static async Task ConfigurarTodosJobs()
+    {
+        var jobsHabilitados = Config.Instancia.ObterJobsHabilitados();
+        
+        foreach (var (nomeJob, configJob) in jobsHabilitados)
         {
-            Log.Information("=== Finalizando Execução do Job ===");
+            await ConfigurarJob(nomeJob, configJob);
+        }
+
+        LoggingTask.RegistrarInfo($"📅 {jobsHabilitados.Count} jobs configurados");
+    }
+
+    /// <summary>
+    /// Configura um job específico
+    /// </summary>
+    private static async Task ConfigurarJob(string nomeJob, JobConfiguracao config)
+    {
+        try
+        {
+            if (_scheduler == null) return;
+
+            // Verificar se tipo de job existe
+            if (!_tiposJobs.TryGetValue(config.TipoJob, out var tipoJob))
+            {
+                LoggingTask.RegistrarAviso($"⚠️ Tipo de job desconhecido: {config.TipoJob}");
+                return;
+            }
+
+            // Criar job detail
+            var job = JobBuilder.Create(tipoJob)
+                .WithIdentity(nomeJob, "AdrenalineSpyJobs")
+                .WithDescription(config.Descricao)
+                .Build();
+
+            // Criar trigger cron
+            var trigger = TriggerBuilder.Create()
+                .WithIdentity($"{nomeJob}Trigger", "AdrenalineSpyTriggers")
+                .WithCronSchedule(config.CronExpression, x => x.InTimeZone(Config.Instancia.ObterTimeZone()))
+                .WithDescription(config.Descricao)
+                .Build();
+
+            // Agendar job
+            await _scheduler.ScheduleJob(job, trigger);
+
+            LoggingTask.RegistrarInfo($"📋 Job '{nomeJob}' agendado: {config.CronExpression}");
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro($"Erro ao configurar job '{nomeJob}'", ex);
+        }
+    }
+
+    /// <summary>
+    /// Executa job manualmente (fora do agendamento)
+    /// </summary>
+    public static async Task<bool> ExecutarJobManual(string nomeJob)
+    {
+        try
+        {
+            if (_scheduler == null)
+            {
+                LoggingTask.RegistrarErro("Scheduler não inicializado");
+                return false;
+            }
+
+            var jobKey = new JobKey(nomeJob, "AdrenalineSpyJobs");
+            
+            if (!await _scheduler.CheckExists(jobKey))
+            {
+                LoggingTask.RegistrarErro($"Job '{nomeJob}' não encontrado");
+                return false;
+            }
+
+            LoggingTask.RegistrarInfo($"▶️ Executando job manual: {nomeJob}");
+            await _scheduler.TriggerJob(jobKey);
+            
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro($"Erro ao executar job manual '{nomeJob}'", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Pausa agendamento de um job específico
+    /// </summary>
+    public static async Task<bool> PausarJob(string nomeJob)
+    {
+        try
+        {
+            if (_scheduler == null) return false;
+
+            var jobKey = new JobKey(nomeJob, "AdrenalineSpyJobs");
+            await _scheduler.PauseJob(jobKey);
+            
+            LoggingTask.RegistrarInfo($"⏸️ Job '{nomeJob}' pausado");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro($"Erro ao pausar job '{nomeJob}'", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Retoma agendamento de um job específico
+    /// </summary>
+    public static async Task<bool> RetomarJob(string nomeJob)
+    {
+        try
+        {
+            if (_scheduler == null) return false;
+
+            var jobKey = new JobKey(nomeJob, "AdrenalineSpyJobs");
+            await _scheduler.ResumeJob(jobKey);
+            
+            LoggingTask.RegistrarInfo($"▶️ Job '{nomeJob}' retomado");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro($"Erro ao retomar job '{nomeJob}'", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Obtém status de todos os jobs
+    /// </summary>
+    public static async Task<Dictionary<string, string>> ObterStatusJobs()
+    {
+        try
+        {
+            if (_scheduler == null) return new Dictionary<string, string>();
+
+            var status = new Dictionary<string, string>();
+            var jobKeys = await _scheduler.GetJobKeys(GroupMatcher<JobKey>.GroupEquals("AdrenalineSpyJobs"));
+
+            foreach (var jobKey in jobKeys)
+            {
+                var triggers = await _scheduler.GetTriggersOfJob(jobKey);
+                var trigger = triggers.FirstOrDefault();
+                
+                if (trigger != null)
+                {
+                    var triggerState = await _scheduler.GetTriggerState(trigger.Key);
+                    var nextFireTime = trigger.GetNextFireTimeUtc();
+                    
+                    status[jobKey.Name] = $"{triggerState} (Próxima: {nextFireTime?.ToLocalTime()})";
+                }
+            }
+
+            return status;
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro("Erro ao obter status dos jobs", ex);
+            return new Dictionary<string, string>();
+        }
+    }
+
+    /// <summary>
+    /// Finaliza scheduler e libera recursos
+    /// </summary>
+    public static async Task FinalizarScheduler()
+    {
+        try
+        {
+            if (_scheduler != null)
+            {
+                await _scheduler.Shutdown(waitForJobsToComplete: true);
+                LoggingTask.RegistrarInfo("🔚 Quartz Scheduler finalizado");
+            }
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarAviso($"Aviso ao finalizar scheduler: {ex.Message}");
+        }
+    }
+}
+
+/// <summary>
+/// Listener para eventos de execução de jobs
+/// </summary>
+public class JobExecutionListener : IJobListener
+{
+    public string Name => "AdrenalineSpyJobListener";
+
+    public async Task JobExecutionVetoed(IJobExecutionContext context, CancellationToken cancellationToken = default)
+    {
+        LoggingTask.RegistrarAviso($"🚫 Job vetado: {context.JobDetail.Key.Name}");
+    }
+
+    public async Task JobToBeExecuted(IJobExecutionContext context, CancellationToken cancellationToken = default)
+    {
+        LoggingTask.RegistrarInfo($"⏳ Iniciando job: {context.JobDetail.Key.Name}");
+    }
+
+    public async Task JobWasExecuted(IJobExecutionContext context, JobExecutionException? jobException, CancellationToken cancellationToken = default)
+    {
+        var nomeJob = context.JobDetail.Key.Name;
+        var duração = context.JobRunTime;
+
+        if (jobException != null)
+        {
+            LoggingTask.RegistrarErro($"❌ Job '{nomeJob}' falhou após {duração.TotalSeconds:F1}s", jobException);
+            await NotificarErroJob(nomeJob, jobException);
+        }
+        else
+        {
+            LoggingTask.RegistrarInfo($"✅ Job '{nomeJob}' concluído com sucesso em {duração.TotalSeconds:F1}s");
+            await NotificarSucessoJob(nomeJob, duração);
+        }
+    }
+
+    private async Task NotificarErroJob(string nomeJob, Exception ex)
+    {
+        if (Config.Instancia.Agendamento.Notificacoes.NotificarErro)
+        {
+            // TODO: Implementar notificação por email
+            LoggingTask.RegistrarInfo($"📧 Notificação de erro enviada para job '{nomeJob}'");
+        }
+    }
+
+    private async Task NotificarSucessoJob(string nomeJob, TimeSpan duracao)
+    {
+        if (Config.Instancia.Agendamento.Notificacoes.NotificarSucesso)
+        {
+            // TODO: Implementar notificação por email
+            LoggingTask.RegistrarInfo($"📧 Notificação de sucesso enviada para job '{nomeJob}'");
+        }
+    }
+}
+
+/// <summary>
+/// Job para execução completa de scraping
+/// </summary>
+[DisallowConcurrentExecution]
+public class ScrapingCompletoJob : IJob
+{
+    public async Task Execute(IJobExecutionContext context)
+    {
+        var workflow = new Workflow.Workflow();
+        var sucesso = await workflow.ExecutarScrapingCompleto();
+        
+        if (!sucesso)
+        {
+            throw new JobExecutionException("Falha na execução do scraping completo");
+        }
+    }
+}
+
+/// <summary>
+/// Job para geração de relatórios
+/// </summary>
+[DisallowConcurrentExecution]
+public class GerarRelatoriosJob : IJob
+{
+    public async Task Execute(IJobExecutionContext context)
+    {
+        try
+        {
+            // Buscar notícias recentes
+            var noticias = await MigrationTask.BuscarNoticiasRecentes(1000);
+            
+            if (!noticias.Any())
+            {
+                LoggingTask.RegistrarAviso("📊 Nenhuma notícia encontrada para relatórios agendados");
+                return;
+            }
+
+            var dataExecucao = DateTime.Now;
+            var tasks = new List<Task<bool>>();
+
+            // Gerar relatórios habilitados
+            if (Config.Instancia.Relatorios.HabilitarExportacaoCSV)
+            {
+                tasks.Add(CsvExportTask.ExportarNoticias(noticias));
+            }
+
+            if (Config.Instancia.Relatorios.HabilitarRelatorioExcel)
+            {
+                tasks.Add(ExcelReportTask.GerarRelatorioCompleto(noticias, dataExecucao));
+            }
+
+            if (Config.Instancia.Relatorios.HabilitarRelatorioPDF)
+            {
+                tasks.Add(PDFReportTask.GerarRelatorioPDF(noticias, dataExecucao));
+            }
+
+            var resultados = await Task.WhenAll(tasks);
+            var sucessos = resultados.Count(r => r);
+
+            LoggingTask.RegistrarInfo($"📊 Relatórios agendados gerados: {sucessos}/{tasks.Count}");
+        }
+        catch (Exception ex)
+        {
+            throw new JobExecutionException("Falha na geração de relatórios agendados", ex);
+        }
+    }
+}
+
+/// <summary>
+/// Job para limpeza de arquivos antigos
+/// </summary>
+public class LimpezaArquivosJob : IJob
+{
+    public async Task Execute(IJobExecutionContext context)
+    {
+        try
+        {
+            var diasParaManter = 30; // Manter arquivos dos últimos 30 dias
+            var dataCorte = DateTime.Now.AddDays(-diasParaManter);
+
+            // Limpar logs antigos
+            await LimparArquivosAntigos("logs/", "*.log", dataCorte);
+            
+            // Limpar screenshots antigos
+            await LimparArquivosAntigos("screenshots/", "*.png", dataCorte);
+            
+            // Limpar relatórios antigos
+            await LimparArquivosAntigos("exports/", "*.*", dataCorte);
+
+            LoggingTask.RegistrarInfo($"🧹 Limpeza de arquivos concluída (mantidos últimos {diasParaManter} dias)");
+        }
+        catch (Exception ex)
+        {
+            throw new JobExecutionException("Falha na limpeza de arquivos", ex);
+        }
+    }
+
+    private async Task LimparArquivosAntigos(string diretorio, string padrao, DateTime dataCorte)
+    {
+        try
+        {
+            if (!Directory.Exists(diretorio)) return;
+
+            var arquivos = Directory.GetFiles(diretorio, padrao, SearchOption.AllDirectories)
+                .Where(f => File.GetCreationTime(f) < dataCorte);
+
+            var contador = 0;
+            foreach (var arquivo in arquivos)
+            {
+                File.Delete(arquivo);
+                contador++;
+            }
+
+            if (contador > 0)
+            {
+                LoggingTask.RegistrarInfo($"🗑️ Removidos {contador} arquivos antigos de {diretorio}");
+            }
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarAviso($"Aviso na limpeza de {diretorio}: {ex.Message}");
+        }
+    }
+}
+
+/// <summary>
+/// Job para backup de dados
+/// </summary>
+public class BackupDadosJob : IJob
+{
+    public async Task Execute(IJobExecutionContext context)
+    {
+        try
+        {
+            var dataBackup = DateTime.Now.ToString("yyyy-MM-dd");
+            var nomeBackup = $"adrenalinespy_backup_{dataBackup}.sql";
+            var caminhoBackup = Path.Combine("backups", nomeBackup);
+
+            Directory.CreateDirectory("backups");
+
+            // TODO: Implementar backup do banco de dados
+            // var sucesso = await MigrationTask.GerarBackupBanco(caminhoBackup);
+
+            LoggingTask.RegistrarInfo($"💾 Backup agendado gerado: {nomeBackup}");
+        }
+        catch (Exception ex)
+        {
+            throw new JobExecutionException("Falha no backup de dados", ex);
         }
     }
 }
 ```
 
-### Exemplo 4: Classe Helper
+## Métodos Mais Usados
+
+### Inicializar Quartz no Program.cs
 
 ```csharp
-public static class QuartzHelper
+// Program.cs com Quartz integrado
+public static async Task Main(string[] args)
 {
-    private static IScheduler _scheduler;
-    
-    public static async Task IniciarScheduler()
+    try
     {
-        _scheduler = await StdSchedulerFactory.GetDefaultScheduler();
-        await _scheduler.Start();
-        Console.WriteLine("Scheduler iniciado");
-    }
-    
-    public static async Task AgendarJob<T>(
-        string jobId, 
-        string cronExpression, 
-        string descricao = null) where T : IJob
-    {
-        IJobDetail job = JobBuilder.Create<T>()
-            .WithIdentity(jobId)
-            .WithDescription(descricao)
-            .Build();
+        // Carregar configurações
+        Config.CarregarConfiguracoes();
         
-        ITrigger trigger = TriggerBuilder.Create()
-            .WithIdentity($"{jobId}_trigger")
-            .WithCronSchedule(cronExpression)
-            .Build();
-        
-        await _scheduler.ScheduleJob(job, trigger);
-        Console.WriteLine($"Job '{jobId}' agendado: {cronExpression}");
+        // Verificar modo de operação
+        var modoScheduler = args.Contains("--scheduler") || args.Contains("-s");
+        var modoGUI = !modoScheduler && Config.Instancia.ModoGUIHabilitado();
+
+        if (modoScheduler)
+        {
+            // Modo agendador (serviço)
+            LoggingTask.RegistrarInfo("⏰ Iniciando AdrenalineSpy em modo agendador");
+            
+            await SchedulingTask.InicializarScheduler();
+            
+            // Manter aplicação viva
+            Console.WriteLine("Pressione 'q' para sair...");
+            while (Console.ReadKey().KeyChar != 'q') { }
+            
+            await SchedulingTask.FinalizarScheduler();
+        }
+        else if (modoGUI)
+        {
+            // Modo GUI
+            await GUITask.InicializarInterface();
+        }
+        else
+        {
+            // Modo console único
+            var workflow = new Workflow.Workflow();
+            await workflow.ExecutarScrapingCompleto();
+        }
     }
-    
-    public static async Task PausarJob(string jobId)
+    catch (Exception ex)
     {
-        await _scheduler.PauseJob(new JobKey(jobId));
-        Console.WriteLine($"Job '{jobId}' pausado");
-    }
-    
-    public static async Task RetomarJob(string jobId)
-    {
-        await _scheduler.ResumeJob(new JobKey(jobId));
-        Console.WriteLine($"Job '{jobId}' retomado");
-    }
-    
-    public static async Task RemoverJob(string jobId)
-    {
-        await _scheduler.DeleteJob(new JobKey(jobId));
-        Console.WriteLine($"Job '{jobId}' removido");
-    }
-    
-    public static async Task PararScheduler()
-    {
-        await _scheduler.Shutdown();
-        Console.WriteLine("Scheduler parado");
+        LoggingTask.RegistrarErro("Erro fatal", ex);
+        Environment.Exit(1);
     }
 }
-
-// Uso
-await QuartzHelper.IniciarScheduler();
-
-await QuartzHelper.AgendarJob<RPADiarioJob>(
-    "rpaDiario", 
-    "0 0 8 * * ?", 
-    "RPA executado diariamente às 8:00");
-
-await QuartzHelper.AgendarJob<ProcessarPedidosJob>(
-    "processarPedidos", 
-    "0 */30 * * * ?", 
-    "Processar pedidos a cada 30 minutos");
-
-Console.ReadLine();
-await QuartzHelper.PararScheduler();
 ```
 
----
-
-## Configuração Avançada
-
-### Persistência (Banco de Dados)
+### Expressões Cron Mais Comuns
 
 ```csharp
-using Quartz.Impl;
-
-// Configurar para usar banco de dados
-var properties = new NameValueCollection
+// Exemplos de CronExpression para diferentes cenários
+var exemplos = new Dictionary<string, string>
 {
-    ["quartz.scheduler.instanceName"] = "MyScheduler",
-    ["quartz.scheduler.instanceId"] = "AUTO",
-    ["quartz.jobStore.type"] = "Quartz.Impl.AdoJobStore.JobStoreTX, Quartz",
-    ["quartz.jobStore.dataSource"] = "default",
-    ["quartz.jobStore.tablePrefix"] = "QRTZ_",
-    ["quartz.dataSource.default.connectionString"] = "Server=localhost;Database=Quartz;...",
-    ["quartz.dataSource.default.provider"] = "SqlServer",
-    ["quartz.serializer.type"] = "json"
+    // Execução diária
+    ["DiarioAs6h"] = "0 0 6 * * ?",              // Todo dia 06:00
+    ["DiarioAs18h"] = "0 0 18 * * ?",             // Todo dia 18:00
+    ["Dia3Vezes"] = "0 0 6,12,18 * * ?",          // 3x por dia (6h, 12h, 18h)
+    
+    // Execução por intervalo
+    ["Cada2Horas"] = "0 0 */2 * * ?",             // A cada 2 horas
+    ["Cada30Min"] = "0 */30 * * * ?",             // A cada 30 minutos
+    ["CadaHora"] = "0 0 * * * ?",                 // De hora em hora
+    
+    // Execução semanal
+    ["DomingoAs22h"] = "0 0 22 ? * SUN",          // Domingo 22:00
+    ["SegundaAs9h"] = "0 0 9 ? * MON",            // Segunda 09:00
+    ["SexaAs17h"] = "0 0 17 ? * FRI",             // Sexta 17:00
+    
+    // Execução mensal
+    ["Dia1As3h"] = "0 0 3 1 * ?",                // Dia 1º do mês 03:00
+    ["UltimoDiaDoMes"] = "0 0 23 L * ?",          // Último dia do mês 23:00
+    
+    // Execução personalizada
+    ["DiaUtil9h"] = "0 0 9 ? * MON-FRI",          // Dias úteis 09:00
+    ["FimSemana"] = "0 0 10 ? * SAT,SUN"          // Final de semana 10:00
 };
-
-ISchedulerFactory schedulerFactory = new StdSchedulerFactory(properties);
-IScheduler scheduler = await schedulerFactory.GetScheduler();
 ```
 
----
-
-## Boas Práticas
-
-### 1. Use Async/Await
+### Criar Job Personalizado
 
 ```csharp
-public async Task Execute(IJobExecutionContext context)
+// Job personalizado para tarefa específica
+[DisallowConcurrentExecution] // Evita execuções simultâneas
+public class MonitoramentoSaudeJob : IJob
 {
-    await MinhaOperacaoAsync();
+    public async Task Execute(IJobExecutionContext context)
+    {
+        try
+        {
+            LoggingTask.RegistrarInfo("🏥 Iniciando monitoramento de saúde");
+            
+            // Verificar conectividade
+            var conectividadeOk = await TestarConectividade();
+            
+            // Verificar uso de memória
+            var memoriaOk = await VerificarUsoMemoria();
+            
+            // Verificar espaço em disco
+            var discoOk = await VerificarEspacoDisco();
+            
+            var status = conectividadeOk && memoriaOk && discoOk;
+            
+            LoggingTask.RegistrarInfo($"💚 Monitoramento concluído: {(status ? "Sistema saudável" : "Alertas detectados")}");
+            
+            if (!status)
+            {
+                throw new JobExecutionException("Sistema com problemas de saúde detectados");
+            }
+        }
+        catch (Exception ex)
+        {
+            throw new JobExecutionException("Falha no monitoramento de saúde", ex);
+        }
+    }
+    
+    private async Task<bool> TestarConectividade()
+    {
+        // Implementar teste de conectividade
+        return true;
+    }
 }
 ```
 
-### 2. Implemente Logging
+### Controle Manual de Jobs via GUI
 
 ```csharp
-Log.Information("Job {JobId} iniciado", context.JobDetail.Key);
-```
-
-### 3. Trate Exceções
-
-```csharp
-try
+// Na interface gráfica - controles para jobs
+private async void BotaoExecutarJob_Click(object sender, RoutedEventArgs e)
 {
-    // código do job
+    try
+    {
+        var nomeJob = ComboBoxJobs.SelectedValue?.ToString();
+        if (string.IsNullOrEmpty(nomeJob))
+        {
+            MessageBox.Show("Selecione um job para executar");
+            return;
+        }
+        
+        LoggingTask.RegistrarInfo($"▶️ Executando job manual: {nomeJob}");
+        
+        var sucesso = await SchedulingTask.ExecutarJobManual(nomeJob);
+        var mensagem = sucesso 
+            ? "✅ Job executado com sucesso!" 
+            : "❌ Falha na execução do job";
+            
+        MessageBox.Show(mensagem);
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro("Erro na execução manual do job", ex);
+        MessageBox.Show($"Erro: {ex.Message}");
+    }
 }
-catch (Exception ex)
+
+// Atualizar status dos jobs na interface
+private async Task AtualizarStatusJobs()
 {
-    Log.Error(ex, "Erro no job");
-    throw new JobExecutionException(ex);
+    var status = await SchedulingTask.ObterStatusJobs();
+    
+    Application.Current.Dispatcher.Invoke(() =>
+    {
+        DataGridJobs.ItemsSource = status.Select(kvp => new 
+        {
+            Job = kvp.Key,
+            Status = kvp.Value
+        }).ToList();
+    });
 }
 ```
 
-### 4. Use Identificadores Descritivos
+### Configuração para Serviço Windows
 
 ```csharp
-.WithIdentity("processarPedidos", "vendas")
-.WithDescription("Processa pedidos pendentes")
+// Para executar como serviço Windows
+public class Program
+{
+    public static async Task Main(string[] args)
+    {
+        var builder = Host.CreateApplicationBuilder(args);
+        
+        // Configurar Quartz como serviço hospedado
+        builder.Services.AddQuartz(q =>
+        {
+            q.UseMicrosoftDependencyInjection();
+            
+            // Configurar jobs
+            q.AddJob<ScrapingCompletoJob>(opts => 
+                opts.WithIdentity("ScrapingJob"));
+                
+            q.AddTrigger(opts => opts
+                .ForJob("ScrapingJob")
+                .WithIdentity("ScrapingTrigger")
+                .WithCronSchedule("0 0 */6 * * ?"));
+        });
+        
+        builder.Services.AddQuartzHostedService(q => q.WaitForJobsToComplete = true);
+        
+        var host = builder.Build();
+        await host.RunAsync();
+    }
+}
 ```
 
----
+### Sistema de Notificações por Job
 
-## Recursos Adicionais
+```csharp
+// Notificar sobre execução dos jobs
+public static async Task NotificarExecucaoJob(string nomeJob, bool sucesso, TimeSpan duracao, Exception? erro = null)
+{
+    try
+    {
+        var config = Config.Instancia.Agendamento.Notificacoes;
+        
+        if ((sucesso && !config.NotificarSucesso) || (!sucesso && !config.NotificarErro))
+        {
+            return;
+        }
 
-- **Site Oficial**: https://www.quartz-scheduler.net/
-- **Documentação**: https://www.quartz-scheduler.net/documentation/
-- **Cron Expression Generator**: https://www.freeformatter.com/cron-expression-generator-quartz.html
+        var assunto = $"AdrenalineSpy - Job '{nomeJob}' {(sucesso ? "Concluído" : "Falhou")}";
+        var corpo = $"""
+            Job: {nomeJob}
+            Status: {(sucesso ? "✅ Sucesso" : "❌ Erro")}
+            Duração: {duracao.TotalMinutes:F1} minutos
+            Timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss}
+            
+            {(erro != null ? $"Erro: {erro.Message}" : "Execução concluída sem erros.")}
+            """;
 
----
-
-**Versão:** 1.0  
-**Última atualização:** Novembro 2025
+        // TODO: Implementar envio via MailKit
+        // await EmailTask.EnviarNotificacao(config.EmailNotificacoes, assunto, corpo);
+        
+        LoggingTask.RegistrarInfo($"📧 Notificação de job enviada: {nomeJob}");
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarAviso($"Erro ao enviar notificação do job: {ex.Message}");
+    }
+}
+```

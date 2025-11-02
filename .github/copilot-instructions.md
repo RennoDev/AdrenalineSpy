@@ -24,15 +24,22 @@
 - `README.md` is the entry point with project description + categorized documentation links
 - `docs/index.md` is the quick reference glossary for all tools
 
-### Documentation Structure Pattern
-All guides in `docs/` follow this template:
-1. **Índice** (Table of contents)
-2. **Introdução** (Why and advantages with ✅ bullets)
-3. **Instalação** (Step-by-step with `dotnet add package` commands)
-4. **Conceitos Básicos** (Core concepts before code)
-5. **Exemplos Práticos** (Complete, runnable code)
-6. **Boas Práticas** (Best practices section)
-7. **Erros Comuns** (Common errors for critical tools like Playwright)
+### Documentation Structure Pattern (NEW - November 2025)
+All guides in `docs/` follow this **strict 6-section template** focused on project integration:
+
+1. **O que é [Tecnologia]** - Brief intro + why use in AdrenalineSpy + where used in project
+2. **Como Instalar** - NuGet packages + additional setup (e.g., Playwright motors)
+3. **Implementar no AutomationSettings.json** - JSON section with all config options explained
+4. **Implementar no Config.cs** - Show Config class integration or create dedicated class (e.g., PlaywrightConfig.cs)
+5. **Montar nas Tasks** - Complete Task implementation (e.g., NavigationTask.cs) with all methods
+6. **Métodos Mais Usados** - Essential methods only: navigation, waits (explicit + timeout), clicks, hover, fill, extract, errors, retry examples
+
+**Key principles:**
+- ✅ Direct integration with `AutomationSettings.json → Config.cs → Task.cs → Program.cs/Workflow.cs`
+- ✅ Complete, copy-paste-ready code (no pseudo-code)
+- ✅ Focus on **practical usage** in project context, not exhaustive API reference
+- ✅ Remove generic examples unrelated to AdrenalineSpy
+- ❌ NO separate "Conceitos Básicos" or "Erros Comuns" sections (integrate into main sections)
 
 ### Code Architecture
 The project follows the **Program.cs → Workflow → Tasks** pattern:
@@ -83,19 +90,23 @@ The project follows the **Program.cs → Workflow → Tasks** pattern:
 
 ## Critical Knowledge
 
-### Documentation Coverage (17 Guides)
+### Documentation Coverage (17 Guides) - Restructuring in Progress
 **Getting Started:** Quick Start, Code Architecture (Main → Workflow → Tasks), Git/GitHub/GitLab  
-**Automation:** Playwright (web), FlaUI (Windows desktop), InputSimulator (keyboard/mouse)  
+**Automation:** Playwright ✅ (web), FlaUI (Windows desktop), InputSimulator (keyboard/mouse)  
 **Files:** EPPlus (Excel), CsvHelper (CSV), iText7 (PDF)  
 **Integration:** RestSharp (APIs), MailKit (email), Newtonsoft.Json  
-**Infrastructure:** Serilog (logging), Quartz (scheduling)  
-**Data:** Entity Framework Core, Dapper, Docker setup (MySQL, PostgreSQL, SQL Server)  
+**Infrastructure:** Serilog ✅ (logging), Quartz (scheduling)  
+**Data:** Entity Framework Core + Dapper ✅ (ORM), Docker setup (MySQL, PostgreSQL, SQL Server)  
 **UI:** WPF, WinForms, Avalonia, Terminal.Gui, Electron.NET  
 **Production:** Deploy guide (GitHub Actions, Azure, Railway, local)
 
+✅ = Restructured to new 6-section pattern
+
 ### Special Documentation Notes
+- **Serilog (DONE)**: Integrated with Config.Logging, LoggingTask.cs static helper, automatic success/failure log separation
+- **Playwright (DONE)**: Requires `playwright.ps1 install` after package install, integrated with Config.Navegacao, NavigationTask.cs complete with retry logic
+- **ORM (DONE)**: Both EF Core and Dapper patterns, integrated with Config.Database.ObterConnectionString(), MigrationTask.cs examples
 - **EPPlus & iText7**: Include licensing warnings (commercial use restrictions)
-- **Playwright**: Requires `playwright.ps1 install` after package install (commonly forgotten)
 - **Docker setup**: Covers WSL 2 setup, essential for Windows developers
 
 ### Implementation Stack (Adrenaline Scraper)

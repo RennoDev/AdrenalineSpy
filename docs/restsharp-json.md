@@ -1,56 +1,535 @@
-# RestSharp e Newtonsoft.Json - APIs e HTTP
+# RestSharp + JSON - APIs e Serialização
 
-## Índice
-1. [RestSharp](#restsharp)
-2. [Newtonsoft.Json](#newtonsoftjson)
-3. [Trabalhando Juntos](#trabalhando-juntos)
-4. [Exemplos Práticos](#exemplos-práticos)
+## O que é RestSharp + JSON
 
----
+**RestSharp** é uma biblioteca para consumo de APIs HTTP/REST, enquanto **Newtonsoft.Json** é o padrão para serialização JSON no .NET.
 
-## RestSharp
+**Onde é usado no AdrenalineSpy:**
+- Consumir APIs externas (se necessário para enriquecimento de dados)
+- Deserializar configurações de `AutomationSettings.json`
+- Serializar dados extraídos antes de salvar no banco
+- Comunicação com APIs de terceiros (webhooks, notificações)
+- Exportar dados coletados para APIs externas
 
-### Instalação
+## Como Instalar
 
-```bash
+### 1. Instalar RestSharp
+
+```powershell
 dotnet add package RestSharp
 ```
 
-### GET Request
+### 2. Instalar Newtonsoft.Json
+
+```powershell
+dotnet add package Newtonsoft.Json
+```
+
+### 3. Verificar .csproj
+
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <PackageReference Include="RestSharp" Version="110.2.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+</Project>
+```
+
+## Implementar no AutomationSettings.json
+
+Adicione seção `API` para configurar APIs externas (se necessário):
+
+```json
+{
+  "Navegacao": {
+    "UrlBase": "https://www.adrenaline.com.br",
+    "DelayEntrePaginas": 2000
+  },
+  "Database": {
+    "ConnectionString": "Server=localhost;Database=AdrenalineSpy;..."
+  },
+  "API": {
+    "HabilitarIntegracao": false,
+    "BaseUrl": "https://api.exemplo.com",
+    "ApiKey": "",
+    "Timeout": 30000,
+    "MaxRetries": 3,
+    "Endpoints": {
+      "EnviarNoticia": "/noticias",
+      "ObterCategoria": "/categorias/{id}",
+      "Webhook": "/webhook/adrenaline"
+    }
+  },
+  "Logging": {
+    "Nivel": "Information",
+    "CaminhoArquivo": "logs/adrenaline-spy.log"
+  }
+}
+```
+
+**Configurações explicadas:**
+- **`HabilitarIntegracao`**: Liga/desliga integração com APIs
+- **`BaseUrl`**: URL base da API externa
+- **`ApiKey`**: Chave de autenticação da API
+- **`Timeout`**: Timeout em milissegundos para requests
+- **`MaxRetries`**: Máximo de tentativas em caso de falha
+- **`Endpoints`**: URLs específicas de cada operação
+
+## Implementar no Config.cs
+
+Adicione classe `APIConfig` ao `Config.cs`:
+
+```csharp
+public class APIConfig
+{
+    public bool HabilitarIntegracao { get; set; } = false;
+    public string BaseUrl { get; set; } = string.Empty;
+    public string ApiKey { get; set; } = string.Empty;
+    public int Timeout { get; set; } = 30000;
+    public int MaxRetries { get; set; } = 3;
+    public Dictionary<string, string> Endpoints { get; set; } = new();
+}
+
+public class Config
+{
+    // ... outras propriedades existentes ...
+    public APIConfig API { get; set; } = new();
+
+    // ... métodos existentes ...
+    
+    /// <summary>
+    /// Cria cliente RestSharp configurado para APIs externas
+    /// </summary>
+    public RestClient CriarClienteAPI()
+    {
+        if (!API.HabilitarIntegracao || string.IsNullOrWhiteSpace(API.BaseUrl))
+        {
+            LoggingTask.RegistrarAviso("API externa desabilitada ou não configurada");
+            return null;
+        }
+
+        var options = new RestClientOptions(API.BaseUrl)
+        {
+            MaxTimeout = API.Timeout,
+            ThrowOnAnyError = false
+        };
+
+        var client = new RestClient(options);
+        
+        // Adicionar header de autenticação se configurado
+        if (!string.IsNullOrWhiteSpace(API.ApiKey))
+        {
+            client.AddDefaultHeader("Authorization", $"Bearer {API.ApiKey}");
+        }
+
+        LoggingTask.RegistrarInfo($"Cliente API criado para: {API.BaseUrl}");
+        return client;
+    }
+
+    /// <summary>
+    /// Obtém URL completa do endpoint
+    /// </summary>
+    public string ObterEndpoint(string nomeEndpoint, params object[] parametros)
+    {
+        if (!API.Endpoints.TryGetValue(nomeEndpoint, out var endpoint))
+        {
+            LoggingTask.RegistrarAviso($"Endpoint '{nomeEndpoint}' não encontrado na configuração");
+            return string.Empty;
+        }
+
+        return string.Format(endpoint, parametros);
+    }
+}
+
+## Montar nas Tasks
+
+Crie a classe `ApiTask.cs` na pasta `Workflow/Tasks/`:
 
 ```csharp
 using RestSharp;
+using Newtonsoft.Json;
 
-var client = new RestClient("https://api.example.com");
-var request = new RestRequest("users", Method.Get);
+namespace AdrenalineSpy.Workflow.Tasks;
 
-var response = await client.ExecuteAsync(request);
-
-if (response.IsSuccessful)
+/// <summary>
+/// Gerencia integração com APIs externas do AdrenalineSpy
+/// </summary>
+public static class ApiTask
 {
-    Console.WriteLine(response.Content);
-}
-else
-{
-    Console.WriteLine($"Erro: {response.ErrorMessage}");
-}
-```
+    /// <summary>
+    /// Envia notícia coletada para API externa
+    /// </summary>
+    public static async Task<bool> EnviarNoticia(Noticia noticia)
+    {
+        try
+        {
+            if (!Config.Instancia.API.HabilitarIntegracao)
+            {
+                LoggingTask.RegistrarInfo("🔌 API externa desabilitada - notícia não enviada");
+                return true; // Não é erro, apenas desabilitado
+            }
 
-### POST Request
+            using var client = Config.Instancia.CriarClienteAPI();
+            if (client == null) return false;
+
+            var endpoint = Config.Instancia.ObterEndpoint("EnviarNoticia");
+            var request = new RestRequest(endpoint, Method.Post);
+
+            // Serializar notícia para JSON
+            var noticiaJson = new
+            {
+                titulo = noticia.Titulo,
+                categoria = noticia.Categoria,
+                url = noticia.Url,
+                dataPublicacao = noticia.DataPublicacao,
+                conteudo = noticia.Conteudo,
+                fonte = "Adrenaline.com.br",
+                coletadoEm = DateTime.Now
+            };
+
+            request.AddJsonBody(noticiaJson);
+
+            var response = await ExecutarComRetry(client, request, Config.Instancia.API.MaxRetries);
+            
+            if (response.IsSuccessful)
+            {
+                LoggingTask.RegistrarInfo($"✅ Notícia enviada para API: {noticia.Titulo}");
+                return true;
+            }
+            else
+            {
+                LoggingTask.RegistrarErro($"❌ Falha ao enviar notícia para API: {response.ErrorMessage}");
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro("Erro ao enviar notícia para API externa", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Notifica API externa sobre conclusão de scraping
+    /// </summary>
+    public static async Task<bool> NotificarExecucaoCompleta(int totalNoticias, DateTime inicioExecucao)
+    {
+        try
+        {
+            if (!Config.Instancia.API.HabilitarIntegracao)
+                return true;
+
+            using var client = Config.Instancia.CriarClienteAPI();
+            if (client == null) return false;
+
+            var endpoint = Config.Instancia.ObterEndpoint("Webhook");
+            var request = new RestRequest(endpoint, Method.Post);
+
+            var webhook = new
+            {
+                evento = "scraping_completo",
+                fonte = "AdrenalineSpy",
+                dados = new
+                {
+                    totalNoticias = totalNoticias,
+                    inicioExecucao = inicioExecucao,
+                    fimExecucao = DateTime.Now,
+                    duracao = (DateTime.Now - inicioExecucao).TotalMinutes,
+                    site = "adrenaline.com.br"
+                }
+            };
+
+            request.AddJsonBody(webhook);
+
+            var response = await ExecutarComRetry(client, request, Config.Instancia.API.MaxRetries);
+            
+            if (response.IsSuccessful)
+            {
+                LoggingTask.RegistrarInfo($"🔔 Webhook enviado: {totalNoticias} notícias processadas");
+                return true;
+            }
+            else
+            {
+                LoggingTask.RegistrarAviso($"⚠️ Falha ao enviar webhook: {response.ErrorMessage}");
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro("Erro ao enviar webhook", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Testa conectividade com API externa
+    /// </summary>
+    public static async Task<bool> TestarConectividade()
+    {
+        try
+        {
+            if (!Config.Instancia.API.HabilitarIntegracao)
+            {
+                LoggingTask.RegistrarInfo("🔌 API externa desabilitada - teste ignorado");
+                return true;
+            }
+
+            using var client = Config.Instancia.CriarClienteAPI();
+            if (client == null) return false;
+
+            var request = new RestRequest("/health", Method.Get);
+            request.Timeout = TimeSpan.FromSeconds(10); // Timeout curto para teste
+
+            var response = await client.ExecuteAsync(request);
+            
+            if (response.IsSuccessful)
+            {
+                LoggingTask.RegistrarInfo("✅ API externa disponível");
+                return true;
+            }
+            else
+            {
+                LoggingTask.RegistrarAviso($"⚠️ API externa indisponível: {response.ErrorMessage}");
+                return false;
+            }
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarAviso("⚠️ Falha ao testar API externa", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Executa request com retry automático
+    /// </summary>
+    private static async Task<RestResponse> ExecutarComRetry(RestClient client, RestRequest request, int maxTentativas)
+    {
+        RestResponse response = null;
+        
+        for (int tentativa = 1; tentativa <= maxTentativas; tentativa++)
+        {
+            try
+            {
+                response = await client.ExecuteAsync(request);
+                
+                if (response.IsSuccessful)
+                {
+                    if (tentativa > 1)
+                        LoggingTask.RegistrarInfo($"✅ Request bem-sucedido na tentativa {tentativa}");
+                    
+                    return response;
+                }
+                
+                if (tentativa < maxTentativas)
+                {
+                    var delay = TimeSpan.FromSeconds(Math.Pow(2, tentativa)); // Backoff exponencial
+                    LoggingTask.RegistrarAviso($"⚠️ Tentativa {tentativa} falhou. Retry em {delay.TotalSeconds}s");
+                    await Task.Delay(delay);
+                }
+            }
+            catch (Exception ex) when (tentativa < maxTentativas)
+            {
+                var delay = TimeSpan.FromSeconds(Math.Pow(2, tentativa));
+                LoggingTask.RegistrarAviso($"⚠️ Erro na tentativa {tentativa}: {ex.Message}. Retry em {delay.TotalSeconds}s");
+                await Task.Delay(delay);
+            }
+        }
+        
+        LoggingTask.RegistrarErro($"❌ Request falhou após {maxTentativas} tentativas");
+        return response;
+    }
+}
+
+## Métodos Mais Usados
+
+### Serializar JSON (Objeto → String)
 
 ```csharp
-var client = new RestClient("https://api.example.com");
-var request = new RestRequest("users", Method.Post);
+using Newtonsoft.Json;
 
-request.AddJsonBody(new
+// Configurações do AdrenalineSpy para JSON
+var settings = new JsonSerializerSettings
 {
-    nome = "João",
-    email = "joao@email.com"
-});
+    NullValueHandling = NullValueHandling.Ignore,
+    DateTimeZoneHandling = DateTimeZoneHandling.Local,
+    Formatting = Formatting.Indented
+};
+
+// Serializar notícia extraída
+var noticia = new Noticia
+{
+    Titulo = "Nova GPU lançada",
+    Categoria = "Hardware",
+    Url = "https://adrenaline.com.br/artigos/nova-gpu",
+    DataPublicacao = DateTime.Now
+};
+
+string json = JsonConvert.SerializeObject(noticia, settings);
+LoggingTask.RegistrarInfo($"Notícia serializada: {json}");
+```
+
+### Deserializar JSON (String → Objeto)
+
+```csharp
+// Carregar configurações do AutomationSettings.json
+string configJson = File.ReadAllText("AutomationSettings.json");
+var config = JsonConvert.DeserializeObject<AutomationSettings>(configJson);
+
+// Deserializar resposta de API
+string responseJson = @"{
+    ""titulo"": ""Breaking News"",
+    ""categoria"": ""Tecnologia"",
+    ""dataPublicacao"": ""2024-11-02T10:00:00""
+}";
+
+var noticia = JsonConvert.DeserializeObject<Noticia>(responseJson);
+LoggingTask.RegistrarInfo($"Notícia carregada: {noticia.Titulo}");
+```
+
+### GET Request com RestSharp
+
+```csharp
+// Verificar status de API externa
+using var client = Config.Instancia.CriarClienteAPI();
+if (client != null)
+{
+    var request = new RestRequest("/status", Method.Get);
+    
+    // Adicionar parâmetros de query se necessário
+    request.AddParameter("source", "adrenaline-spy");
+    request.AddParameter("version", "1.0");
+    
+    var response = await client.ExecuteAsync(request);
+    
+    if (response.IsSuccessful)
+    {
+        dynamic status = JsonConvert.DeserializeObject(response.Content);
+        LoggingTask.RegistrarInfo($"API Status: {status.status}");
+    }
+}
+```
+
+### POST Request com JSON
+
+```csharp
+// Enviar dados coletados para API externa
+var dadosEnvio = new
+{
+    fonte = "AdrenalineSpy",
+    site = "adrenaline.com.br",
+    timestamp = DateTime.UtcNow,
+    noticias = new[]
+    {
+        new { titulo = "Notícia 1", categoria = "Tech" },
+        new { titulo = "Notícia 2", categoria = "Games" }
+    }
+};
+
+using var client = Config.Instancia.CriarClienteAPI();
+if (client != null)
+{
+    var request = new RestRequest("/dados", Method.Post);
+    request.AddJsonBody(dadosEnvio);
+    
+    var response = await client.ExecuteAsync(request);
+    
+    if (response.IsSuccessful)
+    {
+        LoggingTask.RegistrarInfo("✅ Dados enviados com sucesso");
+    }
+    else
+    {
+        LoggingTask.RegistrarErro($"❌ Erro ao enviar dados: {response.ErrorMessage}");
+    }
+}
+```
+
+### Trabalhar com JObject (JSON Dinâmico)
+
+```csharp
+using Newtonsoft.Json.Linq;
+
+// Parse de JSON desconhecido/dinâmico
+string jsonResponse = await ObterDadosDeAPI();
+var jsonObj = JObject.Parse(jsonResponse);
+
+// Navegar propriedades dinamicamente
+if (jsonObj["success"]?.Value<bool>() == true)
+{
+    var dados = jsonObj["data"];
+    
+    foreach (var item in dados.Children())
+    {
+        string titulo = item["titulo"]?.Value<string>();
+        string categoria = item["categoria"]?.Value<string>();
+        
+        LoggingTask.RegistrarInfo($"Item encontrado: {titulo} ({categoria})");
+    }
+}
+```
+
+### Headers e Autenticação
+
+```csharp
+// Configurar headers personalizados
+var request = new RestRequest("/protected-endpoint", Method.Get);
+
+// API Key no header
+request.AddHeader("X-API-Key", Config.Instancia.API.ApiKey);
+
+// User-Agent personalizado para identificar o AdrenalineSpy
+request.AddHeader("User-Agent", "AdrenalineSpy/1.0 (+https://github.com/usuario/adrenaline-spy)");
+
+// Content-Type específico
+request.AddHeader("Accept", "application/json");
+request.AddHeader("Content-Type", "application/json; charset=utf-8");
 
 var response = await client.ExecuteAsync(request);
-Console.WriteLine(response.Content);
 ```
+
+### Integração com Workflow
+
+```csharp
+// No Workflow.cs principal - integrar ApiTask
+public async Task<bool> ExecutarScrapingCompleto()
+{
+    try
+    {
+        // 1. Testar API antes de começar
+        await ApiTask.TestarConectividade();
+        
+        var inicioExecucao = DateTime.Now;
+        var noticias = new List<Noticia>();
+        
+        // 2. Executar scraping normal...
+        await NavigationTask.InicializarBrowser();
+        noticias = await ExtractionTask.ColetarTodasNoticias();
+        await MigrationTask.SalvarNoticias(noticias);
+        
+        // 3. Enviar para API externa (se configurado)
+        foreach (var noticia in noticias)
+        {
+            await ApiTask.EnviarNoticia(noticia);
+        }
+        
+        // 4. Notificar conclusão
+        await ApiTask.NotificarExecucaoCompleta(noticias.Count, inicioExecucao);
+        
+        LoggingTask.RegistrarInfo($"🎯 Scraping completo: {noticias.Count} notícias processadas");
+        return true;
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro("Erro no workflow completo", ex);
+        return false;
+    }
+}
 
 ### Headers e Authentication
 

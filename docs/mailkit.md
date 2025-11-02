@@ -1,509 +1,454 @@
-# MailKit - Envio e Recebimento de Emails
+# 📧 MailKit - Envio de Emails do AdrenalineSpy
 
-## Índice
-1. [Introdução](#introdução)
-2. [Instalação](#instalação)
-3. [Enviar Email (SMTP)](#enviar-email-smtp)
-4. [Receber Email (IMAP/POP3)](#receber-email-imappop3)
-5. [Anexos](#anexos)
-6. [HTML e Formatação](#html-e-formatação)
-7. [Exemplos Práticos](#exemplos-práticos)
+## O que é
 
----
+**MailKit:** Biblioteca .NET para envio e recebimento de emails via SMTP/IMAP  
+**Por que usar:** Notificar resultados do scraping e enviar relatórios automaticamente
 
-## Introdução
+**Onde é usado no AdrenalineSpy:**
+- EmailTask.cs envia relatórios diários de scraping do Adrenaline.com.br  
+- Notificações de erro quando scraping falha
+- Envio de estatísticas e resumos de dados extraídos
+- Relatórios em Excel/CSV como anexo por email
+- Alertas quando novas categorias são detectadas
 
-**MailKit** é uma biblioteca completa para trabalhar com emails em .NET, suportando SMTP, POP3 e IMAP.
+**Posição no fluxo:** Etapa 12 de 17 - implementar APÓS ferramentas básicas (opcional para notificações)
 
-### Vantagens
-- ✅ Moderno e mantido
-- ✅ Suporta SMTP, POP3, IMAP
-- ✅ SSL/TLS
-- ✅ Anexos e HTML
-- ✅ Multiplataforma
+## Como Instalar
 
----
+### 1. Instalar Pacote MailKit
 
-## Instalação
+```powershell
+# Navegar até o projeto
+cd C:\Users\lucas\OneDrive\Documentos\CsharpProjects\AdrenalineSpy
 
-```bash
+# Instalar MailKit
 dotnet add package MailKit
+
+# Verificar instalação
+dotnet list package | findstr MailKit
 ```
 
----
+### 2. Verificar .csproj
 
-## Enviar Email (SMTP)
+Confirme que o pacote foi adicionado:
 
-### Email Simples
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- MailKit para emails -->
+    <PackageReference Include="MailKit" Version="4.3.0" />
+    
+    <!-- Outros pacotes já existentes -->
+    <PackageReference Include="Serilog" Version="4.0.2" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+</Project>
+```
+
+## Implementar no AutomationSettings.json
+
+Adicione a seção `Email` no JSON com configurações SMTP:
+
+```json
+{
+  "Email": {
+    "HabilitarEnvio": true,
+    "SmtpServidor": "smtp.gmail.com",
+    "SmtpPorta": 587,
+    "UsuarioEmail": "seu.email@gmail.com", 
+    "SenhaEmail": "sua_senha_app_aqui",
+    "EmailDestinatario": "relatorios@empresa.com",
+    "NomeRemetente": "AdrenalineSpy RPA",
+    "EnviarRelatorioDiario": true,
+    "EnviarNotificacaoErro": true
+  }
+}
+```
+
+**Explicação das configurações:**
+
+- **`HabilitarEnvio`**: Liga/desliga envio de emails (true/false)
+- **`SmtpServidor`**: Servidor SMTP (Gmail: smtp.gmail.com, Outlook: smtp-mail.outlook.com)
+- **`SmtpPorta`**: Porta SMTP (587 para TLS, 465 para SSL, 25 para local)
+- **`UsuarioEmail`**: Email de origem (precisa ter permissão SMTP)
+- **`SenhaEmail`**: Senha do email ou App Password (Gmail)
+- **`EmailDestinatario`**: Para quem enviar os relatórios
+- **`NomeRemetente`**: Nome que aparece como remetente
+- **`EnviarRelatorioDiario`**: Enviar relatório diário automaticamente
+- **`EnviarNotificacaoErro`**: Notificar por email quando há erros
+
+**⚠️ Gmail:** Use App Password, não a senha normal:
+1. Conta Google → Segurança → Verificação em 2 etapas → Senhas de app
+2. Gere senha específica para "App de email"
+
+## Implementar no Config.cs
+
+Adicione a classe `EmailConfig` ao `Config.cs`:
+
+```csharp
+public class EmailConfig
+{
+    public bool HabilitarEnvio { get; set; } = false;
+    public string SmtpServidor { get; set; } = "smtp.gmail.com";
+    public int SmtpPorta { get; set; } = 587;
+    public string UsuarioEmail { get; set; } = string.Empty;
+    public string SenhaEmail { get; set; } = string.Empty;
+    public string EmailDestinatario { get; set; } = string.Empty;
+    public string NomeRemetente { get; set; } = "AdrenalineSpy RPA";
+    public bool EnviarRelatorioDiario { get; set; } = true;
+    public bool EnviarNotificacaoErro { get; set; } = true;
+}
+```
+
+**No Config.cs principal, adicione a propriedade:**
+
+```csharp
+public class Config
+{
+    // ... outras propriedades existentes ...
+    public EmailConfig Email { get; set; } = new();
+
+    // ... métodos existentes ...
+    
+    /// <summary>
+    /// Valida se as configurações de email estão corretas
+    /// </summary>
+    public bool ValidarEmail()
+    {
+        if (!Email.HabilitarEnvio) return true; // Se desabilitado, não validar
+        
+        var erros = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(Email.SmtpServidor))
+            erros.Add("Email.SmtpServidor não pode estar vazio");
+
+        if (Email.SmtpPorta <= 0)
+            erros.Add("Email.SmtpPorta deve ser maior que zero");
+
+        if (string.IsNullOrWhiteSpace(Email.UsuarioEmail))
+            erros.Add("Email.UsuarioEmail não pode estar vazio");
+
+        if (string.IsNullOrWhiteSpace(Email.SenhaEmail))
+            erros.Add("Email.SenhaEmail não pode estar vazio");
+
+        if (string.IsNullOrWhiteSpace(Email.EmailDestinatario))
+            erros.Add("Email.EmailDestinatario não pode estar vazio");
+
+        if (erros.Any())
+        {
+            LoggingTask.RegistrarAviso("Erros de validação de email:", string.Join(", ", erros));
+            return false;
+        }
+
+        LoggingTask.RegistrarInfo("✅ Configurações de email validadas");
+        return true;
+    }
+}
+```
+
+## Montar nas Tasks
+
+Crie a classe `EmailTask.cs` na pasta `Workflow/Tasks/`:
 
 ```csharp
 using MailKit.Net.Smtp;
 using MailKit.Security;
 using MimeKit;
 
-void EnviarEmailSimples()
+namespace AdrenalineSpy.Workflow.Tasks;
+
+/// <summary>
+/// Gerencia envio de emails para notificações e relatórios do AdrenalineSpy
+/// </summary>
+public static class EmailTask
 {
-    var message = new MimeMessage();
-    
-    // Remetente
-    message.From.Add(new MailboxAddress("Meu Nome", "seu@email.com"));
-    
-    // Destinatário
-    message.To.Add(new MailboxAddress("Nome Destino", "destino@email.com"));
-    
-    // Assunto
-    message.Subject = "Teste de Email";
-    
-    // Corpo (texto simples)
-    message.Body = new TextPart("plain")
+    /// <summary>
+    /// Envia relatório diário com estatísticas de scraping
+    /// </summary>
+    public static async Task EnviarRelatorioDiario(int totalNoticias, int noticiasTech, int noticiasGaming)
     {
-        Text = "Olá! Este é um email de teste."
-    };
-    
-    // Enviar
-    using (var client = new SmtpClient())
-    {
-        // Conectar ao servidor SMTP
-        client.Connect("smtp.gmail.com", 587, SecureSocketOptions.StartTls);
-        
-        // Autenticar
-        client.Authenticate("seu@email.com", "sua_senha");
-        
-        // Enviar
-        client.Send(message);
-        
-        // Desconectar
-        client.Disconnect(true);
-    }
-    
-    Console.WriteLine("Email enviado!");
-}
-```
-
-### Configurações SMTP Comuns
-
-```csharp
-// Gmail
-client.Connect("smtp.gmail.com", 587, SecureSocketOptions.StartTls);
-client.Authenticate("seuemail@gmail.com", "senha_app");
-
-// Outlook/Hotmail
-client.Connect("smtp-mail.outlook.com", 587, SecureSocketOptions.StartTls);
-client.Authenticate("seuemail@outlook.com", "senha");
-
-// Yahoo
-client.Connect("smtp.mail.yahoo.com", 587, SecureSocketOptions.StartTls);
-
-// Office 365
-client.Connect("smtp.office365.com", 587, SecureSocketOptions.StartTls);
-
-// Servidor local (sem SSL)
-client.Connect("localhost", 25, SecureSocketOptions.None);
-```
-
-### Múltiplos Destinatários
-
-```csharp
-var message = new MimeMessage();
-message.From.Add(new MailboxAddress("Remetente", "from@email.com"));
-
-// Para (To)
-message.To.Add(new MailboxAddress("Pessoa 1", "pessoa1@email.com"));
-message.To.Add(new MailboxAddress("Pessoa 2", "pessoa2@email.com"));
-
-// Cópia (Cc)
-message.Cc.Add(new MailboxAddress("Copia", "copia@email.com"));
-
-// Cópia Oculta (Bcc)
-message.Bcc.Add(new MailboxAddress("Oculto", "oculto@email.com"));
-
-message.Subject = "Email para múltiplos destinatários";
-message.Body = new TextPart("plain") { Text = "Mensagem" };
-
-// Enviar...
-```
-
----
-
-## Receber Email (IMAP/POP3)
-
-### Listar Emails (IMAP)
-
-```csharp
-using MailKit.Net.Imap;
-
-void ListarEmails()
-{
-    using (var client = new ImapClient())
-    {
-        client.Connect("imap.gmail.com", 993, SecureSocketOptions.SslOnConnect);
-        client.Authenticate("seu@email.com", "sua_senha");
-        
-        // Abrir pasta
-        var inbox = client.Inbox;
-        inbox.Open(FolderAccess.ReadOnly);
-        
-        Console.WriteLine($"Total de mensagens: {inbox.Count}");
-        Console.WriteLine($"Novas mensagens: {inbox.Recent}");
-        
-        // Listar últimos 10 emails
-        for (int i = inbox.Count - 1; i >= Math.Max(0, inbox.Count - 10); i--)
+        try
         {
-            var message = inbox.GetMessage(i);
-            
-            Console.WriteLine($"\n--- Email {i + 1} ---");
-            Console.WriteLine($"De: {message.From}");
-            Console.WriteLine($"Assunto: {message.Subject}");
-            Console.WriteLine($"Data: {message.Date}");
-        }
-        
-        client.Disconnect(true);
-    }
-}
-```
-
-### Buscar Emails Não Lidos
-
-```csharp
-using MailKit.Search;
-
-var uids = inbox.Search(SearchQuery.NotSeen);
-
-foreach (var uid in uids)
-{
-    var message = inbox.GetMessage(uid);
-    Console.WriteLine($"Não lido: {message.Subject}");
-}
-```
-
-### Marcar como Lido
-
-```csharp
-inbox.AddFlags(uid, MessageFlags.Seen, true);
-```
-
-### Deletar Email
-
-```csharp
-inbox.AddFlags(uid, MessageFlags.Deleted, true);
-inbox.Expunge(); // Permanentemente remover
-```
-
----
-
-## Anexos
-
-### Enviar com Anexo
-
-```csharp
-var message = new MimeMessage();
-message.From.Add(new MailboxAddress("Remetente", "from@email.com"));
-message.To.Add(new MailboxAddress("Destinatário", "to@email.com"));
-message.Subject = "Email com Anexo";
-
-var builder = new BodyBuilder();
-builder.TextBody = "Veja o anexo em anexo.";
-
-// Adicionar anexo
-builder.Attachments.Add("C:\\caminho\\arquivo.pdf");
-builder.Attachments.Add("C:\\caminho\\imagem.png");
-
-// Anexar de bytes
-byte[] dados = File.ReadAllBytes("arquivo.xlsx");
-builder.Attachments.Add("planilha.xlsx", dados);
-
-message.Body = builder.ToMessageBody();
-
-// Enviar...
-```
-
-### Baixar Anexos
-
-```csharp
-var message = inbox.GetMessage(0);
-
-foreach (var attachment in message.Attachments)
-{
-    if (attachment is MimePart mimePart)
-    {
-        string fileName = mimePart.FileName;
-        
-        using (var stream = File.Create(fileName))
-        {
-            mimePart.Content.DecodeTo(stream);
-        }
-        
-        Console.WriteLine($"Anexo salvo: {fileName}");
-    }
-}
-```
-
----
-
-## HTML e Formatação
-
-### Email HTML
-
-```csharp
-var message = new MimeMessage();
-message.From.Add(new MailboxAddress("Remetente", "from@email.com"));
-message.To.Add(new MailboxAddress("Destinatário", "to@email.com"));
-message.Subject = "Email HTML";
-
-var builder = new BodyBuilder();
-
-// HTML
-builder.HtmlBody = @"
-<html>
-<head>
-    <style>
-        body { font-family: Arial; }
-        h1 { color: #333; }
-        .destaque { background-color: yellow; }
-    </style>
-</head>
-<body>
-    <h1>Bem-vindo!</h1>
-    <p>Este é um <span class='destaque'>email HTML</span>.</p>
-    <p><a href='https://example.com'>Clique aqui</a></p>
-</body>
-</html>";
-
-// Alternativa em texto (fallback)
-builder.TextBody = "Bem-vindo! Este é um email HTML.";
-
-message.Body = builder.ToMessageBody();
-
-// Enviar...
-```
-
-### HTML com Imagem Embutida
-
-```csharp
-var builder = new BodyBuilder();
-
-// Adicionar imagem como recurso
-var image = builder.LinkedResources.Add("logo.png");
-image.ContentId = MimeUtils.GenerateMessageId();
-
-builder.HtmlBody = $@"
-<html>
-<body>
-    <img src='cid:{image.ContentId}' alt='Logo'/>
-    <p>Email com imagem embutida</p>
-</body>
-</html>";
-
-message.Body = builder.ToMessageBody();
-```
-
----
-
-## Exemplos Práticos
-
-### Exemplo 1: Notificação de Erro
-
-```csharp
-void EnviarNotificacaoErro(Exception ex, string contexto)
-{
-    var message = new MimeMessage();
-    message.From.Add(new MailboxAddress("Sistema RPA", "sistema@empresa.com"));
-    message.To.Add(new MailboxAddress("Suporte", "suporte@empresa.com"));
-    message.Subject = $"[ERRO] {contexto}";
-    
-    var builder = new BodyBuilder();
-    builder.HtmlBody = $@"
-    <html>
-    <body>
-        <h2 style='color: red;'>Erro na Automação</h2>
-        <p><strong>Contexto:</strong> {contexto}</p>
-        <p><strong>Mensagem:</strong> {ex.Message}</p>
-        <p><strong>Stack Trace:</strong></p>
-        <pre>{ex.StackTrace}</pre>
-        <p><strong>Data/Hora:</strong> {DateTime.Now}</p>
-    </body>
-    </html>";
-    
-    message.Body = builder.ToMessageBody();
-    
-    using (var client = new SmtpClient())
-    {
-        client.Connect("smtp.empresa.com", 587, SecureSocketOptions.StartTls);
-        client.Authenticate("sistema@empresa.com", "senha");
-        client.Send(message);
-        client.Disconnect(true);
-    }
-}
-```
-
-### Exemplo 2: Relatório com Anexo
-
-```csharp
-void EnviarRelatorioComAnexo(string relatorioPath)
-{
-    var message = new MimeMessage();
-    message.From.Add(new MailboxAddress("Automação RPA", "rpa@empresa.com"));
-    message.To.Add(new MailboxAddress("Gerente", "gerente@empresa.com"));
-    message.Subject = $"Relatório Diário - {DateTime.Now:dd/MM/yyyy}";
-    
-    var builder = new BodyBuilder();
-    builder.HtmlBody = $@"
-    <html>
-    <body>
-        <h2>Relatório Diário de Processamento</h2>
-        <p>Segue em anexo o relatório do dia {DateTime.Now:dd/MM/yyyy}.</p>
-        <p>
-            <strong>Resumo:</strong><br/>
-            - Total processado: 150 itens<br/>
-            - Sucesso: 145 itens<br/>
-            - Erros: 5 itens
-        </p>
-        <p>Atenciosamente,<br/>Sistema RPA</p>
-    </body>
-    </html>";
-    
-    builder.Attachments.Add(relatorioPath);
-    message.Body = builder.ToMessageBody();
-    
-    using (var client = new SmtpClient())
-    {
-        client.Connect("smtp.empresa.com", 587, SecureSocketOptions.StartTls);
-        client.Authenticate("rpa@empresa.com", "senha");
-        client.Send(message);
-        client.Disconnect(true);
-    }
-    
-    Console.WriteLine("Relatório enviado por email!");
-}
-```
-
-### Exemplo 3: Processar Emails Não Lidos
-
-```csharp
-void ProcessarEmailsNaoLidos()
-{
-    using (var client = new ImapClient())
-    {
-        client.Connect("imap.gmail.com", 993, SecureSocketOptions.SslOnConnect);
-        client.Authenticate("seu@email.com", "senha_app");
-        
-        var inbox = client.Inbox;
-        inbox.Open(FolderAccess.ReadWrite);
-        
-        var uids = inbox.Search(SearchQuery.NotSeen);
-        
-        foreach (var uid in uids)
-        {
-            var message = inbox.GetMessage(uid);
-            
-            Console.WriteLine($"Processando: {message.Subject}");
-            
-            // Processar email
-            if (message.Subject.Contains("URGENTE"))
+            if (!Config.Instancia.Email.HabilitarEnvio || !Config.Instancia.Email.EnviarRelatorioDiario)
             {
-                ProcessarEmailUrgente(message);
+                LoggingTask.RegistrarInfo("📧 Relatório diário desabilitado nas configurações");
+                return;
             }
-            
-            // Baixar anexos
-            foreach (var attachment in message.Attachments.OfType<MimePart>())
-            {
-                string fileName = attachment.FileName;
-                using (var stream = File.Create($"downloads/{fileName}"))
-                {
-                    attachment.Content.DecodeTo(stream);
-                }
-            }
-            
-            // Marcar como lido
-            inbox.AddFlags(uid, MessageFlags.Seen, true);
+
+            var assunto = $"[AdrenalineSpy] Relatório Diário - {DateTime.Now:dd/MM/yyyy}";
+            var corpo = $@"
+🚀 Relatório de Scraping - Adrenaline.com.br
+
+📊 Estatísticas do Dia:
+• Total de notícias coletadas: {totalNoticias}
+• Tecnologia: {noticiasTech}
+• Gaming: {noticiasGaming}
+
+🕐 Executado em: {DateTime.Now:dd/MM/yyyy HH:mm:ss}
+
+---
+AdrenalineSpy RPA System
+";
+
+            await EnviarEmail(assunto, corpo);
+            LoggingTask.RegistrarInfo($"✅ Relatório diário enviado: {totalNoticias} notícias processadas");
         }
-        
-        client.Disconnect(true);
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro("Falha ao enviar relatório diário", ex);
+        }
     }
-}
-```
 
-### Exemplo 4: Classe EmailService
-
-```csharp
-public class EmailService
-{
-    private readonly string _smtpServer;
-    private readonly int _smtpPort;
-    private readonly string _username;
-    private readonly string _password;
-    
-    public EmailService(string smtpServer, int smtpPort, string username, string password)
+    /// <summary>
+    /// Envia notificação de erro crítico
+    /// </summary>
+    public static async Task EnviarNotificacaoErro(string operacao, Exception erro)
     {
-        _smtpServer = smtpServer;
-        _smtpPort = smtpPort;
-        _username = username;
-        _password = password;
+        try
+        {
+            if (!Config.Instancia.Email.HabilitarEnvio || !Config.Instancia.Email.EnviarNotificacaoErro)
+                return;
+
+            var assunto = $"[AdrenalineSpy] ERRO: {operacao}";
+            var corpo = $@"
+⚠️ Erro Detectado no AdrenalineSpy
+
+🎯 Operação: {operacao}
+🕐 Horário: {DateTime.Now:dd/MM/yyyy HH:mm:ss}
+
+💥 Detalhes do Erro:
+{erro.Message}
+
+📚 Stack Trace:
+{erro.StackTrace}
+
+---
+Verifique os logs para mais detalhes.
+";
+
+            await EnviarEmail(assunto, corpo);
+            LoggingTask.RegistrarInfo($"📧 Notificação de erro enviada para: {operacao}");
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro("Falha ao enviar notificação de erro por email", ex);
+        }
     }
-    
-    public void EnviarEmail(string para, string assunto, string corpoHtml, List<string> anexos = null)
+
+    /// <summary>
+    /// Testa configuração de email enviando mensagem de teste
+    /// </summary>
+    public static async Task<bool> TestarConfiguracao()
     {
+        try
+        {
+            if (!Config.Instancia.ValidarEmail())
+                return false;
+
+            var assunto = "[AdrenalineSpy] Teste de Configuração";
+            var corpo = $@"
+✅ Teste de Configuração de Email
+
+🎯 Este é um email de teste para validar as configurações do MailKit no AdrenalineSpy.
+
+📧 Configurações utilizadas:
+• Servidor SMTP: {Config.Instancia.Email.SmtpServidor}
+• Porta: {Config.Instancia.Email.SmtpPorta}
+• Remetente: {Config.Instancia.Email.NomeRemetente}
+
+🕐 Enviado em: {DateTime.Now:dd/MM/yyyy HH:mm:ss}
+
+Se você recebeu este email, as configurações estão funcionando corretamente! 🚀
+";
+
+            await EnviarEmail(assunto, corpo);
+            LoggingTask.RegistrarInfo("✅ Teste de email enviado com sucesso");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro("Falha no teste de configuração de email", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Método interno para envio de emails
+    /// </summary>
+    private static async Task EnviarEmail(string assunto, string corpo)
+    {
+        var config = Config.Instancia.Email;
+
+        // Criar mensagem
         var message = new MimeMessage();
-        message.From.Add(new MailboxAddress("Sistema", _username));
-        message.To.Add(MailboxAddress.Parse(para));
+        message.From.Add(new MailboxAddress(config.NomeRemetente, config.UsuarioEmail));
+        message.To.Add(MailboxAddress.Parse(config.EmailDestinatario));
         message.Subject = assunto;
-        
-        var builder = new BodyBuilder();
-        builder.HtmlBody = corpoHtml;
-        
-        if (anexos != null)
+
+        // Corpo do email
+        var builder = new BodyBuilder
         {
-            foreach (var anexo in anexos)
-            {
-                builder.Attachments.Add(anexo);
-            }
-        }
-        
+            TextBody = corpo
+        };
         message.Body = builder.ToMessageBody();
+
+        // Enviar via SMTP
+        using var client = new SmtpClient();
         
-        using (var client = new SmtpClient())
-        {
-            client.Connect(_smtpServer, _smtpPort, SecureSocketOptions.StartTls);
-            client.Authenticate(_username, _password);
-            client.Send(message);
-            client.Disconnect(true);
-        }
+        await client.ConnectAsync(config.SmtpServidor, config.SmtpPorta, SecureSocketOptions.StartTls);
+        await client.AuthenticateAsync(config.UsuarioEmail, config.SenhaEmail);
+        await client.SendAsync(message);
+        await client.DisconnectAsync(true);
     }
-    
-    public async Task EnviarEmailAsync(string para, string assunto, string corpoHtml)
+}
+
+## Métodos Mais Usados
+
+### Conectar e Autenticar SMTP
+
+```csharp
+using var client = new SmtpClient();
+
+// Conectar ao servidor
+await client.ConnectAsync("smtp.gmail.com", 587, SecureSocketOptions.StartTls);
+
+// Autenticar com credenciais
+await client.AuthenticateAsync("seu@email.com", "sua_app_password");
+
+// Usar nas operações...
+
+// Desconectar
+await client.DisconnectAsync(true);
+```
+
+### Criar Mensagem Básica
+
+```csharp
+var message = new MimeMessage();
+
+// Remetente
+message.From.Add(new MailboxAddress("AdrenalineSpy", "noreply@adrenalinespy.com"));
+
+// Destinatário
+message.To.Add(MailboxAddress.Parse("admin@exemplo.com"));
+
+// Assunto
+message.Subject = "[AdrenalineSpy] Relatório de Scraping";
+
+// Corpo
+var builder = new BodyBuilder
+{
+    TextBody = "Relatório de scraping do Adrenaline.com.br executado com sucesso!"
+};
+message.Body = builder.ToMessageBody();
+```
+
+### Enviar Email com Retry
+
+```csharp
+public static async Task<bool> EnviarComRetry(MimeMessage message, int maxTentativas = 3)
+{
+    for (int tentativa = 1; tentativa <= maxTentativas; tentativa++)
     {
-        var message = new MimeMessage();
-        message.From.Add(new MailboxAddress("Sistema", _username));
-        message.To.Add(MailboxAddress.Parse(para));
-        message.Subject = assunto;
-        message.Body = new TextPart("html") { Text = corpoHtml };
-        
-        using (var client = new SmtpClient())
+        try
         {
-            await client.ConnectAsync(_smtpServer, _smtpPort, SecureSocketOptions.StartTls);
-            await client.AuthenticateAsync(_username, _password);
+            using var client = new SmtpClient();
+            await client.ConnectAsync(Config.Instancia.Email.SmtpServidor, 
+                                    Config.Instancia.Email.SmtpPorta, 
+                                    SecureSocketOptions.StartTls);
+            
+            await client.AuthenticateAsync(Config.Instancia.Email.UsuarioEmail, 
+                                         Config.Instancia.Email.SenhaEmail);
+            
             await client.SendAsync(message);
             await client.DisconnectAsync(true);
+            
+            LoggingTask.RegistrarInfo($"✅ Email enviado na tentativa {tentativa}");
+            return true;
+        }
+        catch (Exception ex) when (tentativa < maxTentativas)
+        {
+            LoggingTask.RegistrarAviso($"⚠️ Falha na tentativa {tentativa}: {ex.Message}");
+            await Task.Delay(TimeSpan.FromSeconds(tentativa * 2)); // Backoff progressivo
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro($"❌ Falha definitiva após {maxTentativas} tentativas", ex);
+            return false;
         }
     }
+    return false;
 }
-
-// Uso
-var emailService = new EmailService(
-    "smtp.gmail.com", 
-    587, 
-    "seu@email.com", 
-    "senha_app"
-);
-
-emailService.EnviarEmail(
-    "destino@email.com",
-    "Teste",
-    "<h1>Olá!</h1><p>Mensagem de teste</p>"
-);
 ```
 
----
+### Validar Configuração
+
+```csharp
+public static async Task<bool> TestarConexaoSmtp()
+{
+    try
+    {
+        if (!Config.Instancia.ValidarEmail())
+        {
+            LoggingTask.RegistrarAviso("❌ Configuração de email inválida");
+            return false;
+        }
+
+        using var client = new SmtpClient();
+        
+        // Timeout de 10 segundos para teste
+        client.Timeout = 10000;
+        
+        await client.ConnectAsync(Config.Instancia.Email.SmtpServidor, 
+                                Config.Instancia.Email.SmtpPorta, 
+                                SecureSocketOptions.StartTls);
+        
+        await client.AuthenticateAsync(Config.Instancia.Email.UsuarioEmail, 
+                                     Config.Instancia.Email.SenhaEmail);
+        
+        await client.DisconnectAsync(true);
+        
+        LoggingTask.RegistrarInfo("✅ Conexão SMTP validada com sucesso");
+        return true;
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro("❌ Falha na validação SMTP", ex);
+        return false;
+    }
+}
+```
+
+### Integração com Workflow
+
+```csharp
+// No Workflow.cs - após completar scraping
+try
+{
+    var totalNoticias = await MigrationTask.ContarNoticias(DateTime.Today);
+    var noticiasTech = await MigrationTask.ContarNoticiasPorCategoria("Tecnologia");
+    var noticiasGaming = await MigrationTask.ContarNoticiasPorCategoria("Gaming");
+    
+    // Enviar relatório automático
+    await EmailTask.EnviarRelatorioDiario(totalNoticias, noticiasTech, noticiasGaming);
+}
+catch (Exception ex)
+{
+    // Notificar erro por email também
+    await EmailTask.EnviarNotificacaoErro("Geração de Relatório", ex);
+    LoggingTask.RegistrarErro("Falha ao gerar relatório por email", ex);
+}
+
+
 
 ## Boas Práticas
 

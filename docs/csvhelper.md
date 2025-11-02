@@ -1,751 +1,470 @@
-# CsvHelper - Manipulação de Arquivos CSV
+# CsvHelper - Exportação de Dados CSV
 
-## Índice
-1. [Introdução](#introdução)
-2. [Instalação](#instalação)
-3. [Conceitos Básicos](#conceitos-básicos)
-4. [Ler CSV](#ler-csv)
-5. [Escrever CSV](#escrever-csv)
-6. [Mapeamento](#mapeamento)
-7. [Configurações](#configurações)
-8. [Exemplos Práticos](#exemplos-práticos)
-9. [Boas Práticas](#boas-práticas)
+## O que é CsvHelper
 
----
+**CsvHelper** é uma biblioteca .NET para ler e escrever arquivos CSV de forma eficiente e flexível.
 
-## Introdução
+**Onde é usado no AdrenalineSpy:**
+- Exportar notícias coletadas para planilhas CSV
+- Gerar relatórios simples de dados extraídos
+- Backup de dados em formato universalmente legível  
+- Integração com ferramentas de análise de dados
+- Relatórios para usuários finais em formato Excel-compatível
 
-**CsvHelper** é a biblioteca mais popular para ler e escrever arquivos CSV em .NET. Oferece suporte robusto para diferentes formatos e delimitadores.
+## Como Instalar
 
-### Vantagens
-- ✅ Simples e intuitivo
-- ✅ Mapeamento automático de objetos
-- ✅ Suporte a diferentes delimitadores
-- ✅ Configurável e extensível
-- ✅ Performance excelente
-- ✅ Suporte a encoding
+### 1. Instalar Pacote CsvHelper
 
----
-
-## Instalação
-
-```bash
+```powershell
 dotnet add package CsvHelper
 ```
 
----
+### 2. Verificar .csproj
 
-## Conceitos Básicos
-
-### Estrutura Básica
-
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <PackageReference Include="CsvHelper" Version="30.0.1" />
+  </ItemGroup>
+</Project>
 ```
-CSV File → StreamReader → CsvReader → Records
-Records → CsvWriter → StreamWriter → CSV File
+
+## Implementar no AutomationSettings.json
+
+Adicione seção `Relatorios` para configurar exportações CSV:
+
+```json
+{
+  "Navegacao": {
+    "UrlBase": "https://www.adrenaline.com.br",
+    "DelayEntrePaginas": 2000
+  },
+  "Database": {
+    "ConnectionString": "Server=localhost;Database=AdrenalineSpy;..."
+  },
+  "Relatorios": {
+    "HabilitarExportacaoCSV": true,
+    "DiretorioExportacao": "exports/",
+    "NomeArquivoNoticias": "noticias-{data}.csv",
+    "NomeArquivoResumo": "resumo-{data}.csv",
+    "IncluirCabecalho": true,
+    "SeparadorCSV": ",",
+    "Codificacao": "UTF-8",
+    "FormatoData": "yyyy-MM-dd HH:mm:ss",
+    "ExportarApósExecução": true,
+    "ManterHistórico": true,
+    "DiasManter": 30
+  },
+  "Logging": {
+    "Nivel": "Information",
+    "CaminhoArquivo": "logs/adrenaline-spy.log"
+  }
+}
 ```
 
-### Namespaces
+**Configurações explicadas:**
+- **`HabilitarExportacaoCSV`**: Liga/desliga exportação automática para CSV
+- **`DiretorioExportacao`**: Pasta onde salvar arquivos CSV
+- **`NomeArquivoNoticias`**: Template do nome (usa {data} como placeholder)
+- **`IncluirCabecalho`**: Incluir nomes das colunas na primeira linha
+- **`SeparadorCSV`**: Separador de colunas (vírgula, ponto-vírgula, etc.)
+- **`Codificacao`**: Codificação do arquivo (UTF-8 recomendado)
+- **`ExportarApósExecução`**: Gerar CSV automaticamente após scraping
+
+## Implementar no Config.cs
+
+Adicione classe `RelatoriosConfig` ao `Config.cs`:
+
+```csharp
+public class RelatoriosConfig
+{
+    public bool HabilitarExportacaoCSV { get; set; } = true;
+    public string DiretorioExportacao { get; set; } = "exports/";
+    public string NomeArquivoNoticias { get; set; } = "noticias-{data}.csv";
+    public string NomeArquivoResumo { get; set; } = "resumo-{data}.csv";
+    public bool IncluirCabecalho { get; set; } = true;
+    public string SeparadorCSV { get; set; } = ",";
+    public string Codificacao { get; set; } = "UTF-8";
+    public string FormatoData { get; set; } = "yyyy-MM-dd HH:mm:ss";
+    public bool ExportarApósExecução { get; set; } = true;
+    public bool ManterHistórico { get; set; } = true;
+    public int DiasManter { get; set; } = 30;
+}
+
+public class Config
+{
+    // ... outras propriedades existentes ...
+    public RelatoriosConfig Relatorios { get; set; } = new();
+
+    // ... métodos existentes ...
+    
+    /// <summary>
+    /// Obtém caminho completo do arquivo CSV
+    /// </summary>
+    public string ObterCaminhoCSV(string tipoArquivo)
+    {
+        // Garantir que diretório existe
+        Directory.CreateDirectory(Relatorios.DiretorioExportacao);
+        
+        var template = tipoArquivo.ToLower() switch
+        {
+            "noticias" => Relatorios.NomeArquivoNoticias,
+            "resumo" => Relatorios.NomeArquivoResumo,
+            _ => $"{tipoArquivo}-{{data}}.csv"
+        };
+        
+        var nomeArquivo = template.Replace("{data}", DateTime.Now.ToString("yyyy-MM-dd"));
+        return Path.Combine(Relatorios.DiretorioExportacao, nomeArquivo);
+    }
+
+    /// <summary>
+    /// Limpa arquivos CSV antigos conforme configuração
+    /// </summary>
+    public void LimparCSVsAntigos()
+    {
+        if (!Relatorios.ManterHistórico)
+            return;
+
+        try
+        {
+            var diretorio = new DirectoryInfo(Relatorios.DiretorioExportacao);
+            if (!diretorio.Exists) return;
+
+            var dataLimite = DateTime.Now.AddDays(-Relatorios.DiasManter);
+            var arquivosAntigos = diretorio.GetFiles("*.csv")
+                .Where(f => f.CreationTime < dataLimite);
+
+            foreach (var arquivo in arquivosAntigos)
+            {
+                arquivo.Delete();
+                LoggingTask.RegistrarInfo($"📁 Arquivo CSV antigo removido: {arquivo.Name}");
+            }
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro("Erro ao limpar CSVs antigos", ex);
+        }
+    }
+}
+```
+
+## Montar nas Tasks
+
+Crie a classe `CsvExportTask.cs` na pasta `Workflow/Tasks/`:
 
 ```csharp
 using CsvHelper;
-using CsvHelper.Configuration;
 using System.Globalization;
+using System.Text;
+
+namespace AdrenalineSpy.Workflow.Tasks;
+
+/// <summary>
+/// Gerencia exportação de dados para arquivos CSV no AdrenalineSpy
+/// </summary>
+public static class CsvExportTask
+{
+    /// <summary>
+    /// Exporta notícias coletadas para CSV
+    /// </summary>
+    public static async Task<bool> ExportarNoticias(List<Noticia> noticias)
+    {
+        try
+        {
+            if (!Config.Instancia.Relatorios.HabilitarExportacaoCSV)
+            {
+                LoggingTask.RegistrarInfo("📄 Exportação CSV desabilitada nas configurações");
+                return true;
+            }
+
+            if (noticias?.Any() != true)
+            {
+                LoggingTask.RegistrarAviso("📄 Nenhuma notícia para exportar");
+                return false;
+            }
+
+            var caminhoArquivo = Config.Instancia.ObterCaminhoCSV("noticias");
+            
+            using var writer = new StringWriter();
+            using var csv = new CsvWriter(writer, CultureInfo.InvariantCulture);
+
+            // Configurar separador personalizado
+            csv.Context.Configuration.Delimiter = Config.Instancia.Relatorios.SeparadorCSV;
+            
+            // Escrever cabeçalho se configurado
+            if (Config.Instancia.Relatorios.IncluirCabecalho)
+            {
+                csv.WriteHeader<NoticiaCSV>();
+                csv.NextRecord();
+            }
+
+            // Converter notícias para formato CSV
+            var noticiasCSV = noticias.Select(n => new NoticiaCSV
+            {
+                Titulo = n.Titulo,
+                Categoria = n.Categoria,
+                Url = n.Url,
+                DataPublicacao = n.DataPublicacao.ToString(Config.Instancia.Relatorios.FormatoData),
+                Conteudo = LimparTextoParaCSV(n.Conteudo),
+                DataColeta = DateTime.Now.ToString(Config.Instancia.Relatorios.FormatoData),
+                Fonte = "Adrenaline.com.br"
+            });
+
+            csv.WriteRecords(noticiasCSV);
+
+            // Salvar arquivo com encoding configurado
+            var encoding = Encoding.GetEncoding(Config.Instancia.Relatorios.Codificacao);
+            await File.WriteAllTextAsync(caminhoArquivo, writer.ToString(), encoding);
+
+            LoggingTask.RegistrarInfo($"📄 CSV exportado: {Path.GetFileName(caminhoArquivo)} ({noticias.Count} notícias)");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro("Erro ao exportar notícias para CSV", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Exporta resumo estatístico das categorias para CSV
+    /// </summary>
+    public static async Task<bool> ExportarResumo(DateTime dataExecucao, int totalNoticias, Dictionary<string, int> porCategoria)
+    {
+        try
+        {
+            if (!Config.Instancia.Relatorios.HabilitarExportacaoCSV)
+                return true;
+
+            var caminhoArquivo = Config.Instancia.ObterCaminhoCSV("resumo");
+            
+            using var writer = new StringWriter();
+            using var csv = new CsvWriter(writer, CultureInfo.InvariantCulture);
+
+            csv.Context.Configuration.Delimiter = Config.Instancia.Relatorios.SeparadorCSV;
+
+            if (Config.Instancia.Relatorios.IncluirCabecalho)
+            {
+                csv.WriteHeader<ResumoCSV>();
+                csv.NextRecord();
+            }
+
+            // Criar resumo geral
+            var resumos = new List<ResumoCSV>
+            {
+                new ResumoCSV
+                {
+                    DataExecucao = dataExecucao.ToString(Config.Instancia.Relatorios.FormatoData),
+                    Categoria = "TOTAL",
+                    Quantidade = totalNoticias,
+                    Percentual = 100.0
+                }
+            };
+
+            // Adicionar resumo por categoria
+            foreach (var categoria in porCategoria)
+            {
+                resumos.Add(new ResumoCSV
+                {
+                    DataExecucao = dataExecucao.ToString(Config.Instancia.Relatorios.FormatoData),
+                    Categoria = categoria.Key,
+                    Quantidade = categoria.Value,
+                    Percentual = totalNoticias > 0 ? (categoria.Value * 100.0) / totalNoticias : 0
+                });
+            }
+
+            csv.WriteRecords(resumos);
+
+            var encoding = Encoding.GetEncoding(Config.Instancia.Relatorios.Codificacao);
+            await File.WriteAllTextAsync(caminhoArquivo, writer.ToString(), encoding);
+
+            LoggingTask.RegistrarInfo($"📊 Resumo CSV exportado: {Path.GetFileName(caminhoArquivo)}");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro("Erro ao exportar resumo para CSV", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Executa limpeza de arquivos CSV antigos
+    /// </summary>
+    public static void LimparArquivosAntigos()
+    {
+        try
+        {
+            Config.Instancia.LimparCSVsAntigos();
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro("Erro ao limpar CSVs antigos", ex);
+        }
+    }
+
+    /// <summary>
+    /// Limpa texto para evitar problemas no CSV
+    /// </summary>
+    private static string LimparTextoParaCSV(string texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto))
+            return string.Empty;
+
+        // Remover quebras de linha e caracteres problemáticos
+        return texto
+            .Replace('\n', ' ')
+            .Replace('\r', ' ')
+            .Replace('\t', ' ')
+            .Replace("\"", "'")
+            .Trim();
+    }
+}
+
+/// <summary>
+/// Modelo para exportação de notícias em CSV
+/// </summary>
+public class NoticiaCSV
+{
+    public string Titulo { get; set; } = string.Empty;
+    public string Categoria { get; set; } = string.Empty;
+    public string Url { get; set; } = string.Empty;
+    public string DataPublicacao { get; set; } = string.Empty;
+    public string Conteudo { get; set; } = string.Empty;
+    public string DataColeta { get; set; } = string.Empty;
+    public string Fonte { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Modelo para exportação de resumo em CSV
+/// </summary>
+public class ResumoCSV
+{
+    public string DataExecucao { get; set; } = string.Empty;
+    public string Categoria { get; set; } = string.Empty;
+    public int Quantidade { get; set; }
+    public double Percentual { get; set; }
+}
 ```
 
----
+## Métodos Mais Usados
 
-## Ler CSV
-
-### Ler para Lista de Objetos
+### Escrever Lista de Objetos para CSV
 
 ```csharp
 using CsvHelper;
 using System.Globalization;
 
-public class Pessoa
-{
-    public string Nome { get; set; }
-    public int Idade { get; set; }
-    public string Email { get; set; }
-}
+// Exportar dados coletados do AdrenalineSpy
+var noticias = await MigrationTask.ObterNoticias(DateTime.Today);
 
-// Ler CSV
-using (var reader = new StreamReader("pessoas.csv"))
-using (var csv = new CsvReader(reader, CultureInfo.InvariantCulture))
-{
-    var pessoas = csv.GetRecords<Pessoa>().ToList();
-    
-    foreach (var pessoa in pessoas)
-    {
-        Console.WriteLine($"{pessoa.Nome}, {pessoa.Idade}, {pessoa.Email}");
-    }
-}
+using var writer = new StringWriter();
+using var csv = new CsvWriter(writer, CultureInfo.InvariantCulture);
+
+// Configurar separador (vírgula, ponto-vírgula, etc.)
+csv.Context.Configuration.Delimiter = ";";
+
+// Escrever cabeçalho
+csv.WriteHeader<Noticia>();
+csv.NextRecord();
+
+// Escrever dados
+csv.WriteRecords(noticias);
+
+// Salvar arquivo
+await File.WriteAllTextAsync("noticias.csv", writer.ToString());
+LoggingTask.RegistrarInfo($"✅ Exportadas {noticias.Count} notícias para CSV");
 ```
 
-### Ler sem Classe (Dynamic)
+### Ler CSV para Lista de Objetos
 
 ```csharp
-using (var reader = new StreamReader("dados.csv"))
-using (var csv = new CsvReader(reader, CultureInfo.InvariantCulture))
-{
-    var records = csv.GetRecords<dynamic>().ToList();
-    
-    foreach (var record in records)
-    {
-        Console.WriteLine($"{record.Nome} - {record.Idade}");
-    }
-}
+// Ler arquivo CSV de configurações ou dados externos
+using var reader = new StringReader(await File.ReadAllTextAsync("dados.csv"));
+using var csv = new CsvReader(reader, CultureInfo.InvariantCulture);
+
+csv.Context.Configuration.Delimiter = ";";
+
+var registros = csv.GetRecords<Categoria>().ToList();
+LoggingTask.RegistrarInfo($"📖 Carregados {registros.Count} registros do CSV");
 ```
 
-### Ler Linha por Linha
+### Configuração Personalizada
 
 ```csharp
-using (var reader = new StreamReader("dados.csv"))
-using (var csv = new CsvReader(reader, CultureInfo.InvariantCulture))
+// Configuração avançada para CSVs específicos do projeto
+var config = new CsvHelper.Configuration.CsvConfiguration(CultureInfo.InvariantCulture)
 {
-    csv.Read();
-    csv.ReadHeader();
-    
-    while (csv.Read())
-    {
-        var nome = csv.GetField<string>("Nome");
-        var idade = csv.GetField<int>("Idade");
-        
-        Console.WriteLine($"{nome}: {idade} anos");
-    }
-}
-```
-
-### Ler por Índice
-
-```csharp
-using (var reader = new StreamReader("dados.csv"))
-using (var csv = new CsvReader(reader, CultureInfo.InvariantCulture))
-{
-    while (csv.Read())
-    {
-        var campo0 = csv.GetField(0);  // Primeira coluna
-        var campo1 = csv.GetField(1);  // Segunda coluna
-        var campo2 = csv.GetField<int>(2);  // Terceira coluna como int
-        
-        Console.WriteLine($"{campo0}, {campo1}, {campo2}");
-    }
-}
-```
-
-### Ler CSV Sem Cabeçalho
-
-```csharp
-var config = new CsvConfiguration(CultureInfo.InvariantCulture)
-{
-    HasHeaderRecord = false
+    Delimiter = Config.Instancia.Relatorios.SeparadorCSV,
+    HasHeaderRecord = Config.Instancia.Relatorios.IncluirCabecalho,
+    MissingFieldFound = null, // Ignora campos faltantes
+    BadDataFound = null,      // Ignora dados mal formatados
+    Encoding = Encoding.GetEncoding(Config.Instancia.Relatorios.Codificacao)
 };
 
-using (var reader = new StreamReader("sem-cabecalho.csv"))
-using (var csv = new CsvReader(reader, config))
+using var csv = new CsvWriter(writer, config);
+```
+
+### Mapeamento de Campos Customizado
+
+```csharp
+// Classe de mapeamento para controlar nomes das colunas
+public class NoticiaCsvMap : ClassMap<Noticia>
 {
-    while (csv.Read())
+    public NoticiaCsvMap()
     {
-        var valor1 = csv.GetField(0);
-        var valor2 = csv.GetField(1);
-        Console.WriteLine($"{valor1}, {valor2}");
-    }
-}
-```
-
----
-
-## Escrever CSV
-
-### Escrever Lista de Objetos
-
-```csharp
-var pessoas = new List<Pessoa>
-{
-    new Pessoa { Nome = "João", Idade = 30, Email = "joao@email.com" },
-    new Pessoa { Nome = "Maria", Idade = 25, Email = "maria@email.com" },
-    new Pessoa { Nome = "Pedro", Idade = 35, Email = "pedro@email.com" }
-};
-
-using (var writer = new StreamWriter("saida.csv"))
-using (var csv = new CsvWriter(writer, CultureInfo.InvariantCulture))
-{
-    csv.WriteRecords(pessoas);
-}
-```
-
-### Escrever Campo por Campo
-
-```csharp
-using (var writer = new StreamWriter("saida.csv"))
-using (var csv = new CsvWriter(writer, CultureInfo.InvariantCulture))
-{
-    // Cabeçalho
-    csv.WriteField("Nome");
-    csv.WriteField("Idade");
-    csv.WriteField("Email");
-    csv.NextRecord();
-    
-    // Dados
-    csv.WriteField("João");
-    csv.WriteField(30);
-    csv.WriteField("joao@email.com");
-    csv.NextRecord();
-    
-    csv.WriteField("Maria");
-    csv.WriteField(25);
-    csv.WriteField("maria@email.com");
-    csv.NextRecord();
-}
-```
-
-### Escrever Dynamic
-
-```csharp
-var records = new List<dynamic>
-{
-    new { Nome = "João", Idade = 30 },
-    new { Nome = "Maria", Idade = 25 }
-};
-
-using (var writer = new StreamWriter("dinamico.csv"))
-using (var csv = new CsvWriter(writer, CultureInfo.InvariantCulture))
-{
-    csv.WriteRecords(records);
-}
-```
-
-### Append (Adicionar ao Final)
-
-```csharp
-var config = new CsvConfiguration(CultureInfo.InvariantCulture)
-{
-    HasHeaderRecord = false  // Não escrever cabeçalho novamente
-};
-
-using (var stream = File.Open("arquivo.csv", FileMode.Append))
-using (var writer = new StreamWriter(stream))
-using (var csv = new CsvWriter(writer, config))
-{
-    csv.WriteRecord(new Pessoa { Nome = "Novo", Idade = 40, Email = "novo@email.com" });
-    csv.NextRecord();
-}
-```
-
----
-
-## Mapeamento
-
-### Class Map Customizado
-
-```csharp
-using CsvHelper.Configuration;
-
-public class PessoaMap : ClassMap<Pessoa>
-{
-    public PessoaMap()
-    {
-        // Mapear por nome de coluna
-        Map(m => m.Nome).Name("NomeCompleto");
-        Map(m => m.Idade).Name("Anos");
-        Map(m => m.Email).Name("EmailPessoal");
-        
-        // Mapear por índice
-        // Map(m => m.Nome).Index(0);
-        // Map(m => m.Idade).Index(1);
-        
-        // Ignorar propriedade
-        // Map(m => m.PropriedadeIgnorada).Ignore();
+        Map(n => n.Titulo).Name("Título da Notícia");
+        Map(n => n.Categoria).Name("Categoria");
+        Map(n => n.Url).Name("Link");
+        Map(n => n.DataPublicacao).Name("Data de Publicação");
+        Map(n => n.Conteudo).Name("Conteúdo");
     }
 }
 
 // Usar o mapeamento
-using (var reader = new StreamReader("pessoas.csv"))
-using (var csv = new CsvReader(reader, CultureInfo.InvariantCulture))
-{
-    csv.Context.RegisterClassMap<PessoaMap>();
-    var pessoas = csv.GetRecords<Pessoa>().ToList();
-}
+csv.Context.Configuration.RegisterClassMap<NoticiaCsvMap>();
 ```
 
-### Map com Conversão
+### Integração com Workflow Principal
 
 ```csharp
-public class ProdutoMap : ClassMap<Produto>
+// No Workflow.cs principal - integrar CsvExportTask
+public async Task<bool> ExecutarScrapingCompleto()
 {
-    public ProdutoMap()
+    try
     {
-        Map(m => m.Nome);
+        // 1. Limpar arquivos antigos
+        CsvExportTask.LimparArquivosAntigos();
         
-        // Converter string para decimal
-        Map(m => m.Preco).Convert(args =>
+        var inicioExecucao = DateTime.Now;
+        
+        // 2. Executar scraping normal...
+        var noticias = await ExtractionTask.ColetarTodasNoticias();
+        await MigrationTask.SalvarNoticias(noticias);
+        
+        // 3. Exportar para CSV se habilitado
+        if (Config.Instancia.Relatorios.ExportarApósExecução)
         {
-            var valor = args.Row.GetField("Preco");
-            valor = valor.Replace("R$", "").Replace(",", "").Trim();
-            return decimal.Parse(valor) / 100;
-        });
-        
-        // Data customizada
-        Map(m => m.DataCadastro).Convert(args =>
-        {
-            var data = args.Row.GetField("Data");
-            return DateTime.ParseExact(data, "dd/MM/yyyy", CultureInfo.InvariantCulture);
-        });
-    }
-}
-```
-
-### Map Opcional
-
-```csharp
-public class ClienteMap : ClassMap<Cliente>
-{
-    public ClienteMap()
-    {
-        Map(m => m.Nome);
-        Map(m => m.Email).Optional();  // Coluna pode não existir
-        Map(m => m.Telefone).Default("Não informado");  // Valor padrão
-    }
-}
-```
-
----
-
-## Configurações
-
-### Delimitador Customizado
-
-```csharp
-// Ponto e vírgula
-var config = new CsvConfiguration(CultureInfo.InvariantCulture)
-{
-    Delimiter = ";"
-};
-
-// Tab
-var config = new CsvConfiguration(CultureInfo.InvariantCulture)
-{
-    Delimiter = "\t"
-};
-
-// Pipe
-var config = new CsvConfiguration(CultureInfo.InvariantCulture)
-{
-    Delimiter = "|"
-};
-
-using (var reader = new StreamReader("dados.csv"))
-using (var csv = new CsvReader(reader, config))
-{
-    var records = csv.GetRecords<MyClass>().ToList();
-}
-```
-
-### Configurações Comuns
-
-```csharp
-var config = new CsvConfiguration(CultureInfo.InvariantCulture)
-{
-    // Delimitador
-    Delimiter = ",",
-    
-    // Cabeçalho
-    HasHeaderRecord = true,
-    
-    // Encoding
-    Encoding = Encoding.UTF8,
-    
-    // Ignorar linhas vazias
-    ShouldSkipRecord = args => args.Row.Parser.Record.All(string.IsNullOrWhiteSpace),
-    
-    // Modo de leitura
-    Mode = CsvMode.RFC4180,
-    
-    // Trim spaces
-    TrimOptions = TrimOptions.Trim,
-    
-    // Ignorar referências vazias
-    IgnoreBlankLines = true,
-    
-    // Case insensitive headers
-    PrepareHeaderForMatch = args => args.Header.ToLower(),
-    
-    // Quote character
-    Quote = '"',
-    
-    // Detectar delimitador automaticamente
-    DetectColumnCountChanges = true
-};
-```
-
-### Culture Info (Formato Regional)
-
-```csharp
-// Brasil (pt-BR)
-var config = new CsvConfiguration(new CultureInfo("pt-BR"))
-{
-    Delimiter = ";"
-};
-
-// EUA (en-US)
-var config = new CsvConfiguration(new CultureInfo("en-US"))
-{
-    Delimiter = ","
-};
-
-// Invariant (padrão)
-var config = new CsvConfiguration(CultureInfo.InvariantCulture);
-```
-
----
-
-## Exemplos Práticos
-
-### Exemplo 1: Converter CSV para JSON
-
-```csharp
-using System.Text.Json;
-
-void ConverterCSVparaJSON(string csvPath, string jsonPath)
-{
-    using (var reader = new StreamReader(csvPath))
-    using (var csv = new CsvReader(reader, CultureInfo.InvariantCulture))
-    {
-        var records = csv.GetRecords<dynamic>().ToList();
-        
-        var json = JsonSerializer.Serialize(records, new JsonSerializerOptions 
-        { 
-            WriteIndented = true 
-        });
-        
-        File.WriteAllText(jsonPath, json);
-    }
-    
-    Console.WriteLine($"Convertido para: {jsonPath}");
-}
-```
-
-### Exemplo 2: Filtrar e Exportar
-
-```csharp
-void FiltrarEExportar(string inputPath, string outputPath, int idadeMinima)
-{
-    using (var reader = new StreamReader(inputPath))
-    using (var csv = new CsvReader(reader, CultureInfo.InvariantCulture))
-    {
-        var pessoas = csv.GetRecords<Pessoa>()
-            .Where(p => p.Idade >= idadeMinima)
-            .ToList();
-        
-        using (var writer = new StreamWriter(outputPath))
-        using (var csvOut = new CsvWriter(writer, CultureInfo.InvariantCulture))
-        {
-            csvOut.WriteRecords(pessoas);
-        }
-    }
-    
-    Console.WriteLine($"Filtrados: {pessoas.Count} registros");
-}
-```
-
-### Exemplo 3: Mesclar Múltiplos CSVs
-
-```csharp
-void MesclarCSVs(string[] arquivos, string saida)
-{
-    var todosRegistros = new List<Pessoa>();
-    
-    foreach (var arquivo in arquivos)
-    {
-        using (var reader = new StreamReader(arquivo))
-        using (var csv = new CsvReader(reader, CultureInfo.InvariantCulture))
-        {
-            var registros = csv.GetRecords<Pessoa>().ToList();
-            todosRegistros.AddRange(registros);
-        }
-    }
-    
-    using (var writer = new StreamWriter(saida))
-    using (var csv = new CsvWriter(writer, CultureInfo.InvariantCulture))
-    {
-        csv.WriteRecords(todosRegistros);
-    }
-    
-    Console.WriteLine($"Total mesclado: {todosRegistros.Count} registros");
-}
-```
-
-### Exemplo 4: CSV com Validação
-
-```csharp
-void ImportarComValidacao(string path)
-{
-    var erros = new List<string>();
-    var validos = new List<Pessoa>();
-    int linha = 1;
-    
-    using (var reader = new StreamReader(path))
-    using (var csv = new CsvReader(reader, CultureInfo.InvariantCulture))
-    {
-        csv.Read();
-        csv.ReadHeader();
-        
-        while (csv.Read())
-        {
-            linha++;
+            await CsvExportTask.ExportarNoticias(noticias);
             
-            try
-            {
-                var pessoa = new Pessoa
-                {
-                    Nome = csv.GetField<string>("Nome"),
-                    Idade = csv.GetField<int>("Idade"),
-                    Email = csv.GetField<string>("Email")
-                };
-                
-                // Validações
-                if (string.IsNullOrWhiteSpace(pessoa.Nome))
-                {
-                    erros.Add($"Linha {linha}: Nome vazio");
-                    continue;
-                }
-                
-                if (pessoa.Idade < 0 || pessoa.Idade > 150)
-                {
-                    erros.Add($"Linha {linha}: Idade inválida ({pessoa.Idade})");
-                    continue;
-                }
-                
-                if (!pessoa.Email.Contains("@"))
-                {
-                    erros.Add($"Linha {linha}: Email inválido ({pessoa.Email})");
-                    continue;
-                }
-                
-                validos.Add(pessoa);
-            }
-            catch (Exception ex)
-            {
-                erros.Add($"Linha {linha}: {ex.Message}");
-            }
+            // Gerar resumo por categoria
+            var porCategoria = noticias.GroupBy(n => n.Categoria)
+                .ToDictionary(g => g.Key, g => g.Count());
+            
+            await CsvExportTask.ExportarResumo(inicioExecucao, noticias.Count, porCategoria);
         }
-    }
-    
-    Console.WriteLine($"Válidos: {validos.Count}");
-    Console.WriteLine($"Erros: {erros.Count}");
-    
-    foreach (var erro in erros)
-    {
-        Console.WriteLine(erro);
-    }
-}
-```
-
-### Exemplo 5: Exportar com Formatação
-
-```csharp
-public class RelatorioVendas
-{
-    public DateTime Data { get; set; }
-    public string Produto { get; set; }
-    public decimal Valor { get; set; }
-}
-
-public class RelatorioVendasMap : ClassMap<RelatorioVendas>
-{
-    public RelatorioVendasMap()
-    {
-        Map(m => m.Data).Name("Data").TypeConverterOption.Format("dd/MM/yyyy");
-        Map(m => m.Produto).Name("Produto");
-        Map(m => m.Valor).Name("Valor (R$)").TypeConverterOption.Format("N2");
-    }
-}
-
-void ExportarRelatorio()
-{
-    var vendas = new List<RelatorioVendas>
-    {
-        new RelatorioVendas { Data = DateTime.Now, Produto = "Mouse", Valor = 50.00m },
-        new RelatorioVendas { Data = DateTime.Now, Produto = "Teclado", Valor = 150.00m }
-    };
-    
-    using (var writer = new StreamWriter("relatorio.csv"))
-    using (var csv = new CsvWriter(writer, new CultureInfo("pt-BR")))
-    {
-        csv.Context.RegisterClassMap<RelatorioVendasMap>();
-        csv.WriteRecords(vendas);
-    }
-}
-```
-
-### Exemplo 6: Ler CSV Grande (Streaming)
-
-```csharp
-// Processar arquivo grande sem carregar tudo na memória
-void ProcessarCSVGrande(string path)
-{
-    int processados = 0;
-    
-    using (var reader = new StreamReader(path))
-    using (var csv = new CsvReader(reader, CultureInfo.InvariantCulture))
-    {
-        var records = csv.GetRecords<Pessoa>();
         
-        foreach (var pessoa in records)
-        {
-            // Processar registro por registro
-            ProcessarPessoa(pessoa);
-            
-            processados++;
-            
-            if (processados % 1000 == 0)
-            {
-                Console.WriteLine($"Processados: {processados}");
-            }
-        }
+        LoggingTask.RegistrarInfo($"🎯 Scraping + Export completo: {noticias.Count} notícias");
+        return true;
     }
-    
-    Console.WriteLine($"Total processado: {processados}");
-}
-
-void ProcessarPessoa(Pessoa pessoa)
-{
-    // Lógica de processamento
-    // Ex: salvar no banco, enviar email, etc.
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro("Erro no workflow completo", ex);
+        return false;
+    }
 }
 ```
-
----
-
-## Boas Práticas
-
-### 1. Use using para Dispose
-
-```csharp
-// ✅ BOM
-using (var reader = new StreamReader("dados.csv"))
-using (var csv = new CsvReader(reader, CultureInfo.InvariantCulture))
-{
-    // código
-}
-
-// ❌ RUIM - sem dispose
-var reader = new StreamReader("dados.csv");
-var csv = new CsvReader(reader, CultureInfo.InvariantCulture);
-```
-
-### 2. Especifique Culture
-
-```csharp
-// ✅ BOM - específico
-var csv = new CsvReader(reader, new CultureInfo("pt-BR"));
-
-// ✅ BOM - invariante
-var csv = new CsvReader(reader, CultureInfo.InvariantCulture);
-
-// ❌ EVITE - pode causar problemas
-var csv = new CsvReader(reader, CultureInfo.CurrentCulture);
-```
-
-### 3. Valide Dados
-
-```csharp
-try
-{
-    var idade = csv.GetField<int>("Idade");
-}
-catch (Exception ex)
-{
-    Console.WriteLine($"Erro ao ler idade: {ex.Message}");
-    // Usar valor padrão ou pular registro
-}
-```
-
-### 4. Use ClassMap para CSVs Complexos
-
-```csharp
-// Para CSVs com colunas não padrão, sempre use ClassMap
-csv.Context.RegisterClassMap<MyClassMap>();
-```
-
-### 5. Trate Encoding
-
-```csharp
-// UTF-8 com BOM
-using (var reader = new StreamReader(path, Encoding.UTF8))
-using (var csv = new CsvReader(reader, CultureInfo.InvariantCulture))
-{
-    // ...
-}
-
-// Latin1 / ISO-8859-1
-using (var reader = new StreamReader(path, Encoding.Latin1))
-using (var csv = new CsvReader(reader, CultureInfo.InvariantCulture))
-{
-    // ...
-}
-```
-
-### 6. Para Arquivos Grandes, Use Streaming
-
-```csharp
-// ✅ BOM - streaming, não carrega tudo na memória
-var records = csv.GetRecords<Pessoa>();
-foreach (var pessoa in records)
-{
-    ProcessarPessoa(pessoa);
-}
-
-// ❌ RUIM para arquivos grandes - carrega tudo
-var todasPessoas = csv.GetRecords<Pessoa>().ToList();
-```
-
----
-
-## Troubleshooting
-
-### Problema: "Header matching ['Nome'] names at index 0 was not found"
-
-**Solução**: Nome da propriedade não corresponde ao cabeçalho do CSV.
-```csharp
-// Opção 1: Usar ClassMap
-Map(m => m.Nome).Name("NomeCompleto");
-
-// Opção 2: Case insensitive
-var config = new CsvConfiguration(CultureInfo.InvariantCulture)
-{
-    PrepareHeaderForMatch = args => args.Header.ToLower()
-};
-```
-
-### Problema: Encoding errado (caracteres estranhos)
-
-**Solução**:
-```csharp
-using (var reader = new StreamReader(path, Encoding.UTF8))
-// ou
-using (var reader = new StreamReader(path, Encoding.Latin1))
-```
-
-### Problema: Delimitador errado
-
-**Solução**:
-```csharp
-var config = new CsvConfiguration(CultureInfo.InvariantCulture)
-{
-    Delimiter = ";" // ou "\t" ou "|"
-};
-```
-
----
-
-## Recursos Adicionais
-
-- **GitHub**: https://github.com/JoshClose/CsvHelper
-- **Documentação**: https://joshclose.github.io/CsvHelper/
-- **Examples**: https://joshclose.github.io/CsvHelper/examples
-
----
-
-**Versão:** 1.0  
-**Última atualização:** Novembro 2025

@@ -1,53 +1,41 @@
-# EPPlus - Manipulação de Planilhas Excel
+# EPPlus - Relatórios Excel Avançados
 
-## Índice
-1. [Introdução](#introdução)
-2. [Instalação](#instalação)
-3. [Licenciamento](#licenciamento)
-4. [Conceitos Básicos](#conceitos-básicos)
-5. [Criar e Salvar](#criar-e-salvar)
-6. [Ler Dados](#ler-dados)
-7. [Escrever Dados](#escrever-dados)
-8. [Formatação](#formatação)
-9. [Fórmulas](#fórmulas)
-10. [Gráficos](#gráficos)
-11. [Tabelas](#tabelas)
-12. [Exemplos Práticos](#exemplos-práticos)
-13. [Boas Práticas](#boas-práticas)
+## O que é EPPlus
 
----
+**EPPlus** é uma biblioteca .NET para criar e manipular planilhas Excel (.xlsx) sem precisar do Microsoft Excel instalado.
 
-## Introdução
+**Onde é usado no AdrenalineSpy:**
+- Gerar relatórios Excel ricos com formatação e gráficos
+- Exportar notícias coletadas em planilhas organizadas por categoria
+- Criar dashboards visuais com estatísticas de scraping
+- Relatórios executivos com gráficos de tendências
+- Planilhas de auditoria com links e imagens das notícias
 
-**EPPlus** é uma biblioteca .NET para criar, ler e manipular planilhas Excel (.xlsx) sem precisar do Microsoft Excel instalado.
+⚠️ **IMPORTANTE - Licenciamento**: EPPlus 5+ requer licença para uso comercial. Para uso pessoal/educacional/open source é gratuito.
 
-### Vantagens
-- ✅ Não requer Excel instalado
-- ✅ Performance excelente
-- ✅ Suporte completo a .xlsx
-- ✅ Fórmulas, formatação, gráficos
-- ✅ Trabalha com grandes volumes de dados
-- ✅ Multiplataforma (.NET Core)
+## Como Instalar
 
-### Formatos Suportados
-- **.xlsx** - Excel 2007+
-- Não suporta .xls (formato antigo)
+### 1. Instalar Pacote EPPlus
 
----
-
-## Instalação
-
-```bash
+```powershell
 dotnet add package EPPlus
 ```
 
----
+### 2. Verificar .csproj
 
-## Licenciamento
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <PackageReference Include="EPPlus" Version="7.0.4" />
+  </ItemGroup>
+</Project>
+```
 
-⚠️ **IMPORTANTE**: EPPlus 5+ requer licença para uso comercial.
-
-### Configurar Licença (OBRIGATÓRIO)
+### 3. Configurar Licença (OBRIGATÓRIO)
 
 **Adicione esta linha ANTES de usar qualquer funcionalidade do EPPlus:**
 
@@ -61,817 +49,528 @@ ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
 ExcelPackage.LicenseContext = LicenseContext.Commercial;
 ```
 
-**Exemplo completo em `Program.cs`:**
+## Implementar no AutomationSettings.json
 
-```csharp
-using OfficeOpenXml;
+Adicione configurações de relatórios Excel na seção `Relatorios`:
 
-// ⚠️ CONFIGURE ISSO PRIMEIRO, logo no início do programa
-ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
-
-Console.WriteLine("Iniciando manipulação de Excel...");
-
-// Agora pode usar EPPlus normalmente
-var arquivo = new FileInfo("planilha.xlsx");
-using var package = new ExcelPackage(arquivo);
-// ... resto do código ...
-```
-
-**Se você esquecer isso, receberá um erro:** `"Please set the ExcelPackage.LicenseContext property"`
-
----
-
-## Conceitos Básicos
-
-### Estrutura Hierárquica
-
-```
-ExcelPackage (arquivo .xlsx)
-  └── Workbook
-       └── Worksheets
-            └── Worksheet (planilha/aba)
-                 └── Cells (células)
-```
-
-### Namespaces Principais
-
-```csharp
-using OfficeOpenXml;              // Core
-using OfficeOpenXml.Style;        // Estilos
-using OfficeOpenXml.Drawing;      // Gráficos
-using OfficeOpenXml.Drawing.Chart; // Gráficos específicos
-using OfficeOpenXml.Table;        // Tabelas
-```
-
----
-
-## Criar e Salvar
-
-### Criar Nova Planilha
-
-```csharp
-using OfficeOpenXml;
-
-ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
-
-// Criar novo arquivo
-using (var package = new ExcelPackage())
+```json
 {
-    // Adicionar planilha
-    var worksheet = package.Workbook.Worksheets.Add("MinhaAba");
-    
-    // Adicionar dados
-    worksheet.Cells[1, 1].Value = "Nome";
-    worksheet.Cells[1, 2].Value = "Idade";
-    
-    worksheet.Cells[2, 1].Value = "João";
-    worksheet.Cells[2, 2].Value = 30;
-    
-    // Salvar arquivo
-    FileInfo file = new FileInfo(@"C:\temp\planilha.xlsx");
-    package.SaveAs(file);
-}
-
-Console.WriteLine("Planilha criada!");
-```
-
-### Abrir Arquivo Existente
-
-```csharp
-FileInfo file = new FileInfo(@"C:\temp\planilha.xlsx");
-
-using (var package = new ExcelPackage(file))
-{
-    var worksheet = package.Workbook.Worksheets[0]; // Primeira aba
-    
-    // Ler dados
-    var valor = worksheet.Cells[1, 1].Value;
-    
-    // Modificar
-    worksheet.Cells[3, 1].Value = "Maria";
-    
-    // Salvar mudanças
-    package.Save();
+  "Navegacao": {
+    "UrlBase": "https://www.adrenaline.com.br",
+    "DelayEntrePaginas": 2000
+  },
+  "Database": {
+    "ConnectionString": "Server=localhost;Database=AdrenalineSpy;..."
+  },
+  "Relatorios": {
+    "HabilitarExportacaoCSV": true,
+    "HabilitarRelatorioExcel": true,
+    "DiretorioExportacao": "exports/",
+    "NomeArquivoExcel": "relatorio-adrenaline-{data}.xlsx",
+    "IncluirGraficos": true,
+    "IncluirImagens": false,
+    "FormatoData": "yyyy-MM-dd HH:mm:ss",
+    "ExportarApósExecução": true,
+    "ConfiguracaoExcel": {
+      "TituloRelatorio": "Relatório AdrenalineSpy",
+      "Autor": "AdrenalineSpy RPA",
+      "Empresa": "Projeto Open Source",
+      "CorTema": "#1f497d",
+      "IncluirResumoExecutivo": true,
+      "IncluirGraficoTendencias": true,
+      "IncluirTabelaDinamica": false
+    }
+  },
+  "Logging": {
+    "Nivel": "Information",
+    "CaminhoArquivo": "logs/adrenaline-spy.log"
+  }
 }
 ```
 
-### Salvar em Stream
+**Configurações específicas do Excel:**
+- **`HabilitarRelatorioExcel`**: Liga/desliga geração de relatórios Excel
+- **`NomeArquivoExcel`**: Template do nome do arquivo Excel
+- **`IncluirGraficos`**: Adicionar gráficos visuais ao relatório
+- **`ConfiguracaoExcel`**: Personalização visual e conteúdo dos relatórios
+
+## Implementar no Config.cs
+
+Expanda a classe `RelatoriosConfig` no `Config.cs`:
 
 ```csharp
-using (var package = new ExcelPackage())
+public class ConfiguracaoExcelConfig
 {
-    var worksheet = package.Workbook.Worksheets.Add("Dados");
-    worksheet.Cells[1, 1].Value = "Teste";
+    public string TituloRelatorio { get; set; } = "Relatório AdrenalineSpy";
+    public string Autor { get; set; } = "AdrenalineSpy RPA";
+    public string Empresa { get; set; } = "Projeto Open Source";
+    public string CorTema { get; set; } = "#1f497d";
+    public bool IncluirResumoExecutivo { get; set; } = true;
+    public bool IncluirGraficoTendencias { get; set; } = true;
+    public bool IncluirTabelaDinamica { get; set; } = false;
+}
+
+public class RelatoriosConfig
+{
+    // ... propriedades existentes do CSV ...
+    public bool HabilitarRelatorioExcel { get; set; } = true;
+    public string NomeArquivoExcel { get; set; } = "relatorio-adrenaline-{data}.xlsx";
+    public bool IncluirGraficos { get; set; } = true;
+    public bool IncluirImagens { get; set; } = false;
+    public ConfiguracaoExcelConfig ConfiguracaoExcel { get; set; } = new();
+}
+
+public class Config
+{
+    // ... propriedades e métodos existentes ...
     
-    // Salvar em MemoryStream
-    using (var stream = new MemoryStream())
+    /// <summary>
+    /// Obtém caminho completo do arquivo Excel
+    /// </summary>
+    public string ObterCaminhoExcel()
     {
-        package.SaveAs(stream);
-        byte[] excelBytes = stream.ToArray();
+        Directory.CreateDirectory(Relatorios.DiretorioExportacao);
         
-        // Enviar por email, upload, etc.
+        var nomeArquivo = Relatorios.NomeArquivoExcel
+            .Replace("{data}", DateTime.Now.ToString("yyyy-MM-dd"));
+        
+        return Path.Combine(Relatorios.DiretorioExportacao, nomeArquivo);
+    }
+
+    /// <summary>
+    /// Configura contexto de licença do EPPlus
+    /// </summary>
+    public void ConfigurarLicencaEPPlus()
+    {
+        // Para projetos educacionais/open source
+        ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+        
+        LoggingTask.RegistrarInfo("✅ EPPlus configurado com licença não-comercial");
     }
 }
 ```
 
----
+## Montar nas Tasks
 
-## Ler Dados
-
-### Ler Células
+Crie a classe `ExcelReportTask.cs` na pasta `Workflow/Tasks/`:
 
 ```csharp
-var worksheet = package.Workbook.Worksheets["MinhaAba"];
+using OfficeOpenXml;
+using OfficeOpenXml.Chart;
+using OfficeOpenXml.Style;
+using System.Drawing;
 
-// Por índice (linha, coluna) - baseado em 1
-var valor1 = worksheet.Cells[1, 1].Value;
+namespace AdrenalineSpy.Workflow.Tasks;
 
-// Por endereço (A1, B2, etc)
-var valor2 = worksheet.Cells["A1"].Value;
-
-// Verificar tipo
-if (worksheet.Cells[2, 2].Value is double numero)
+/// <summary>
+/// Gerencia geração de relatórios Excel avançados para o AdrenalineSpy
+/// </summary>
+public static class ExcelReportTask
 {
-    Console.WriteLine($"Número: {numero}");
-}
-else if (worksheet.Cells[2, 1].Value is string texto)
-{
-    Console.WriteLine($"Texto: {texto}");
-}
-
-// Ler como texto
-string textoFormatado = worksheet.Cells[2, 2].Text;
-```
-
-### Ler Intervalo
-
-```csharp
-// Ler intervalo de células
-var range = worksheet.Cells["A1:C10"];
-
-foreach (var cell in range)
-{
-    Console.WriteLine($"{cell.Address}: {cell.Value}");
-}
-```
-
-### Ler Dimensões
-
-```csharp
-// Obter dimensão usada
-var start = worksheet.Dimension.Start;
-var end = worksheet.Dimension.End;
-
-int startRow = start.Row;
-int startCol = start.Column;
-int endRow = end.Row;
-int endCol = end.Column;
-
-Console.WriteLine($"Linhas: {startRow} até {endRow}");
-Console.WriteLine($"Colunas: {startCol} até {endCol}");
-```
-
-### Iterar por Linhas e Colunas
-
-```csharp
-var worksheet = package.Workbook.Worksheets[0];
-
-// Linhas e colunas com dados
-int rowCount = worksheet.Dimension.Rows;
-int colCount = worksheet.Dimension.Columns;
-
-// Iterar por todas as células
-for (int row = 1; row <= rowCount; row++)
-{
-    for (int col = 1; col <= colCount; col++)
+    /// <summary>
+    /// Gera relatório Excel completo com notícias e estatísticas
+    /// </summary>
+    public static async Task<bool> GerarRelatorioCompleto(List<Noticia> noticias, DateTime dataExecucao)
     {
-        var cellValue = worksheet.Cells[row, col].Value;
-        Console.Write($"{cellValue}\t");
-    }
-    Console.WriteLine();
-}
-```
-
-### Ler para Lista de Objetos
-
-```csharp
-public class Produto
-{
-    public string Nome { get; set; }
-    public decimal Preco { get; set; }
-    public int Quantidade { get; set; }
-}
-
-List<Produto> LerProdutos(ExcelWorksheet worksheet)
-{
-    var produtos = new List<Produto>();
-    
-    // Assumindo cabeçalho na linha 1
-    int rowCount = worksheet.Dimension.Rows;
-    
-    for (int row = 2; row <= rowCount; row++)
-    {
-        var produto = new Produto
+        try
         {
-            Nome = worksheet.Cells[row, 1].Value?.ToString(),
-            Preco = Convert.ToDecimal(worksheet.Cells[row, 2].Value),
-            Quantidade = Convert.ToInt32(worksheet.Cells[row, 3].Value)
-        };
-        
-        produtos.Add(produto);
+            if (!Config.Instancia.Relatorios.HabilitarRelatorioExcel)
+            {
+                LoggingTask.RegistrarInfo("📊 Relatório Excel desabilitado nas configurações");
+                return true;
+            }
+
+            if (noticias?.Any() != true)
+            {
+                LoggingTask.RegistrarAviso("📊 Nenhuma notícia para gerar relatório Excel");
+                return false;
+            }
+
+            // Configurar licença do EPPlus
+            Config.Instancia.ConfigurarLicencaEPPlus();
+
+            var caminhoArquivo = Config.Instancia.ObterCaminhoExcel();
+            
+            using var package = new ExcelPackage();
+            
+            // Configurar propriedades do documento
+            ConfigurarPropriedadesDocumento(package, dataExecucao);
+            
+            // Gerar abas do relatório
+            await GerarAbaResumoExecutivo(package, noticias, dataExecucao);
+            await GerarAbaNoticiasPorCategoria(package, noticias);
+            await GerarAbaDetalhesNoticias(package, noticias);
+            
+            if (Config.Instancia.Relatorios.IncluirGraficos)
+            {
+                await GerarAbaGraficos(package, noticias);
+            }
+
+            // Salvar arquivo
+            var fileInfo = new FileInfo(caminhoArquivo);
+            await package.SaveAsAsync(fileInfo);
+
+            LoggingTask.RegistrarInfo($"📊 Relatório Excel gerado: {Path.GetFileName(caminhoArquivo)} ({noticias.Count} notícias)");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro("Erro ao gerar relatório Excel", ex);
+            return false;
+        }
     }
-    
-    return produtos;
+
+    /// <summary>
+    /// Configura propriedades do documento Excel
+    /// </summary>
+    private static void ConfigurarPropriedadesDocumento(ExcelPackage package, DateTime dataExecucao)
+    {
+        var config = Config.Instancia.Relatorios.ConfiguracaoExcel;
+        
+        package.Workbook.Properties.Title = config.TituloRelatorio;
+        package.Workbook.Properties.Author = config.Autor;
+        package.Workbook.Properties.Company = config.Empresa;
+        package.Workbook.Properties.Subject = "Relatório de scraping do Adrenaline.com.br";
+        package.Workbook.Properties.Created = dataExecucao;
+        package.Workbook.Properties.Comments = $"Gerado automaticamente em {dataExecucao:dd/MM/yyyy HH:mm}";
+    }
+
+    /// <summary>
+    /// Gera aba de resumo executivo
+    /// </summary>
+    private static async Task GerarAbaResumoExecutivo(ExcelPackage package, List<Noticia> noticias, DateTime dataExecucao)
+    {
+        var worksheet = package.Workbook.Worksheets.Add("📋 Resumo Executivo");
+        var config = Config.Instancia.Relatorios.ConfiguracaoExcel;
+
+        // Título principal
+        worksheet.Cells["A1"].Value = config.TituloRelatorio;
+        worksheet.Cells["A1"].Style.Font.Size = 18;
+        worksheet.Cells["A1"].Style.Font.Bold = true;
+        worksheet.Cells["A1"].Style.Font.Color.SetColor(ColorTranslator.FromHtml(config.CorTema));
+
+        // Informações gerais
+        int row = 3;
+        worksheet.Cells[row, 1].Value = "📅 Data de Execução:";
+        worksheet.Cells[row, 2].Value = dataExecucao.ToString("dd/MM/yyyy HH:mm:ss");
+        worksheet.Cells[row, 1].Style.Font.Bold = true;
+
+        row++;
+        worksheet.Cells[row, 1].Value = "🌐 Site Monitorado:";
+        worksheet.Cells[row, 2].Value = "Adrenaline.com.br";
+        worksheet.Cells[row, 1].Style.Font.Bold = true;
+
+        row++;
+        worksheet.Cells[row, 1].Value = "📰 Total de Notícias:";
+        worksheet.Cells[row, 2].Value = noticias.Count;
+        worksheet.Cells[row, 1].Style.Font.Bold = true;
+        worksheet.Cells[row, 2].Style.Font.Bold = true;
+        worksheet.Cells[row, 2].Style.Font.Color.SetColor(Color.DarkGreen);
+
+        // Estatísticas por categoria
+        row += 2;
+        worksheet.Cells[row, 1].Value = "📊 Distribuição por Categoria:";
+        worksheet.Cells[row, 1].Style.Font.Bold = true;
+        worksheet.Cells[row, 1].Style.Font.Size = 14;
+
+        var categorias = noticias.GroupBy(n => n.Categoria)
+            .Select(g => new { Categoria = g.Key, Quantidade = g.Count() })
+            .OrderByDescending(x => x.Quantidade);
+
+        row++;
+        foreach (var categoria in categorias)
+        {
+            worksheet.Cells[row, 2].Value = categoria.Categoria;
+            worksheet.Cells[row, 3].Value = categoria.Quantidade;
+            worksheet.Cells[row, 4].Value = $"{(categoria.Quantidade * 100.0 / noticias.Count):F1}%";
+            
+            // Formatação
+            worksheet.Cells[row, 2].Style.Font.Bold = true;
+            worksheet.Cells[row, 3].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+            worksheet.Cells[row, 4].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+            
+            row++;
+        }
+
+        // Auto ajustar colunas
+        worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+    }
+
+    /// <summary>
+    /// Gera aba com notícias agrupadas por categoria
+    /// </summary>
+    private static async Task GerarAbaNoticiasPorCategoria(ExcelPackage package, List<Noticia> noticias)
+    {
+        var categorias = noticias.GroupBy(n => n.Categoria).OrderBy(g => g.Key);
+
+        foreach (var grupo in categorias)
+        {
+            var nomeAba = $"📁 {grupo.Key}".Substring(0, Math.Min(31, $"📁 {grupo.Key}".Length)); // Excel limita 31 chars
+            var worksheet = package.Workbook.Worksheets.Add(nomeAba);
+
+            // Cabeçalhos
+            worksheet.Cells[1, 1].Value = "Título";
+            worksheet.Cells[1, 2].Value = "Data Publicação";
+            worksheet.Cells[1, 3].Value = "URL";
+            worksheet.Cells[1, 4].Value = "Conteúdo (Preview)";
+
+            // Formatação do cabeçalho
+            using (var range = worksheet.Cells[1, 1, 1, 4])
+            {
+                range.Style.Font.Bold = true;
+                range.Style.Fill.PatternType = ExcelFillPatternType.Solid;
+                range.Style.Fill.BackgroundColor.SetColor(ColorTranslator.FromHtml("#f2f2f2"));
+                range.Style.Border.BorderAround(ExcelBorderStyle.Thin);
+            }
+
+            // Dados
+            int row = 2;
+            foreach (var noticia in grupo.OrderByDescending(n => n.DataPublicacao))
+            {
+                worksheet.Cells[row, 1].Value = noticia.Titulo;
+                worksheet.Cells[row, 2].Value = noticia.DataPublicacao;
+                worksheet.Cells[row, 2].Style.Numberformat.Format = "dd/mm/yyyy hh:mm";
+                
+                // URL como hyperlink
+                worksheet.Cells[row, 3].Formula = $"=HYPERLINK(\"{noticia.Url}\",\"🔗 Abrir\")";
+                worksheet.Cells[row, 3].Style.Font.Color.SetColor(Color.Blue);
+                
+                // Preview do conteúdo (primeiros 100 caracteres)
+                var preview = string.IsNullOrWhiteSpace(noticia.Conteudo) 
+                    ? "Sem conteúdo" 
+                    : noticia.Conteudo.Substring(0, Math.Min(100, noticia.Conteudo.Length)) + "...";
+                worksheet.Cells[row, 4].Value = preview;
+
+                row++;
+            }
+
+            // Auto ajustar colunas
+            worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+            
+            // Limitar largura máxima
+            worksheet.Column(1).Width = Math.Min(worksheet.Column(1).Width, 50);
+            worksheet.Column(4).Width = Math.Min(worksheet.Column(4).Width, 60);
+        }
+    }
+
+    /// <summary>
+    /// Gera aba com detalhes completos das notícias
+    /// </summary>
+    private static async Task GerarAbaDetalhesNoticias(ExcelPackage package, List<Noticia> noticias)
+    {
+        var worksheet = package.Workbook.Worksheets.Add("📄 Detalhes Completos");
+
+        // Cabeçalhos
+        string[] headers = { "ID", "Título", "Categoria", "Data Publicação", "URL", "Conteúdo Completo", "Data Coleta" };
+        for (int i = 0; i < headers.Length; i++)
+        {
+            worksheet.Cells[1, i + 1].Value = headers[i];
+        }
+
+        // Formatação do cabeçalho
+        using (var range = worksheet.Cells[1, 1, 1, headers.Length])
+        {
+            range.Style.Font.Bold = true;
+            range.Style.Fill.PatternType = ExcelFillPatternType.Solid;
+            range.Style.Fill.BackgroundColor.SetColor(ColorTranslator.FromHtml("#4f81bd"));
+            range.Style.Font.Color.SetColor(Color.White);
+        }
+
+        // Dados
+        int row = 2;
+        foreach (var noticia in noticias.OrderByDescending(n => n.DataPublicacao))
+        {
+            worksheet.Cells[row, 1].Value = noticia.Id;
+            worksheet.Cells[row, 2].Value = noticia.Titulo;
+            worksheet.Cells[row, 3].Value = noticia.Categoria;
+            worksheet.Cells[row, 4].Value = noticia.DataPublicacao;
+            worksheet.Cells[row, 4].Style.Numberformat.Format = "dd/mm/yyyy hh:mm";
+            worksheet.Cells[row, 5].Value = noticia.Url;
+            worksheet.Cells[row, 6].Value = noticia.Conteudo ?? "Sem conteúdo";
+            worksheet.Cells[row, 7].Value = DateTime.Now;
+            worksheet.Cells[row, 7].Style.Numberformat.Format = "dd/mm/yyyy hh:mm";
+
+            row++;
+        }
+
+        // Auto ajustar colunas
+        worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+        
+        // Configurar quebra de texto
+        worksheet.Column(6).Style.WrapText = true;
+        worksheet.Column(6).Width = 80;
+    }
+
+    /// <summary>
+    /// Gera aba com gráficos estatísticos
+    /// </summary>
+    private static async Task GerarAbaGraficos(ExcelPackage package, List<Noticia> noticias)
+    {
+        var worksheet = package.Workbook.Worksheets.Add("📈 Gráficos");
+
+        // Preparar dados para gráfico de pizza (categorias)
+        var dadosCategorias = noticias.GroupBy(n => n.Categoria)
+            .Select(g => new { Categoria = g.Key, Quantidade = g.Count() })
+            .OrderByDescending(x => x.Quantidade)
+            .ToList();
+
+        // Tabela de dados para o gráfico
+        worksheet.Cells[1, 1].Value = "Categoria";
+        worksheet.Cells[1, 2].Value = "Quantidade";
+        
+        int row = 2;
+        foreach (var item in dadosCategorias)
+        {
+            worksheet.Cells[row, 1].Value = item.Categoria;
+            worksheet.Cells[row, 2].Value = item.Quantidade;
+            row++;
+        }
+
+        // Criar gráfico de pizza
+        var chart = worksheet.Drawings.AddChart("GraficoCategorias", eChartType.Pie);
+        chart.Title.Text = "Distribuição de Notícias por Categoria";
+        chart.SetPosition(1, 0, 4, 0);
+        chart.SetSize(600, 400);
+
+        // Definir dados do gráfico
+        var series = chart.Series.Add(worksheet.Cells[2, 2, row - 1, 2], worksheet.Cells[2, 1, row - 1, 1]);
+        series.Header = "Notícias por Categoria";
+
+        LoggingTask.RegistrarInfo("📈 Gráficos adicionados ao relatório Excel");
+    }
 }
 ```
 
----
+## Métodos Mais Usados
 
-## Escrever Dados
-
-### Escrever Valores Simples
+### Configurar Licença e Criar Planilha Básica
 
 ```csharp
-var worksheet = package.Workbook.Worksheets.Add("Dados");
+using OfficeOpenXml;
 
-// Texto
-worksheet.Cells[1, 1].Value = "Nome";
+// SEMPRE configurar licença primeiro
+ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
 
-// Número
-worksheet.Cells[1, 2].Value = 42;
+// Criar nova planilha
+using var package = new ExcelPackage();
+var worksheet = package.Workbook.Worksheets.Add("Notícias AdrenalineSpy");
 
-// Data
-worksheet.Cells[1, 3].Value = DateTime.Now;
-
-// Fórmula
-worksheet.Cells[1, 4].Formula = "=SUM(A1:A10)";
-
-// Boolean
-worksheet.Cells[1, 5].Value = true;
-
-// Null
-worksheet.Cells[1, 6].Value = null;
+// Salvar
+var fileInfo = new FileInfo("relatorio.xlsx");
+await package.SaveAsAsync(fileInfo);
+LoggingTask.RegistrarInfo("✅ Planilha Excel criada");
 ```
 
-### Escrever Intervalo
+### Escrever Dados com Formatação
 
 ```csharp
-// Escrever array de valores
-object[,] valores = new object[3, 2]
-{
-    { "João", 30 },
-    { "Maria", 25 },
-    { "Pedro", 35 }
-};
+// Cabeçalhos com formatação
+worksheet.Cells["A1"].Value = "Título da Notícia";
+worksheet.Cells["B1"].Value = "Categoria";
+worksheet.Cells["C1"].Value = "Data";
 
-worksheet.Cells["A1"].LoadFromArrays(new List<object[]>
+// Formatação do cabeçalho
+using (var range = worksheet.Cells["A1:C1"])
 {
-    new object[] { "João", 30 },
-    new object[] { "Maria", 25 },
-    new object[] { "Pedro", 35 }
-});
+    range.Style.Font.Bold = true;
+    range.Style.Fill.PatternType = ExcelFillPatternType.Solid;
+    range.Style.Fill.BackgroundColor.SetColor(Color.LightBlue);
+}
+
+// Dados das notícias
+int row = 2;
+foreach (var noticia in noticias)
+{
+    worksheet.Cells[row, 1].Value = noticia.Titulo;
+    worksheet.Cells[row, 2].Value = noticia.Categoria;
+    worksheet.Cells[row, 3].Value = noticia.DataPublicacao;
+    worksheet.Cells[row, 3].Style.Numberformat.Format = "dd/mm/yyyy";
+    row++;
+}
 ```
 
-### Escrever de Collection
+### Criar Hyperlinks
 
 ```csharp
-var produtos = new List<Produto>
-{
-    new Produto { Nome = "Mouse", Preco = 50.00m, Quantidade = 10 },
-    new Produto { Nome = "Teclado", Preco = 150.00m, Quantidade = 5 },
-    new Produto { Nome = "Monitor", Preco = 800.00m, Quantidade = 3 }
-};
-
-// LoadFromCollection com cabeçalhos
-worksheet.Cells["A1"].LoadFromCollection(produtos, true);
-
-// Sem cabeçalhos
-// worksheet.Cells["A1"].LoadFromCollection(produtos, false);
+// URL como hyperlink clicável
+worksheet.Cells[row, 4].Formula = $"=HYPERLINK(\"{noticia.Url}\",\"🔗 Ver Notícia\")";
+worksheet.Cells[row, 4].Style.Font.Color.SetColor(Color.Blue);
+worksheet.Cells[row, 4].Style.Font.UnderLine = true;
 ```
 
-### Auto Fit Colunas
+### Adicionar Gráfico de Pizza
+
+```csharp
+// Dados para o gráfico (categorias e quantidades)
+var categorias = noticias.GroupBy(n => n.Categoria)
+    .ToDictionary(g => g.Key, g => g.Count());
+
+// Criar gráfico
+var chart = worksheet.Drawings.AddChart("GraficoCategoria", eChartType.Pie);
+chart.Title.Text = "Notícias por Categoria";
+chart.SetPosition(1, 0, 6, 0); // Posição na planilha
+chart.SetSize(400, 300); // Tamanho
+
+// Configurar dados do gráfico
+var series = chart.Series.Add(worksheet.Cells["B2:B5"], worksheet.Cells["A2:A5"]);
+```
+
+### Auto Ajustar e Formatação Avançada
 
 ```csharp
 // Auto ajustar todas as colunas
 worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
 
-// Auto ajustar coluna específica
-worksheet.Column(1).AutoFit();
+// Limitar largura máxima
+worksheet.Column(1).Width = Math.Min(worksheet.Column(1).Width, 50);
 
-// Com largura mínima e máxima
-worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns(10, 50);
-```
+// Quebra de texto
+worksheet.Column(4).Style.WrapText = true;
 
----
-
-## Formatação
-
-### Fonte
-
-```csharp
-// Cabeçalho
-var headerRange = worksheet.Cells["A1:C1"];
-headerRange.Style.Font.Bold = true;
-headerRange.Style.Font.Size = 12;
-headerRange.Style.Font.Color.SetColor(Color.White);
-headerRange.Style.Font.Name = "Arial";
-
-// Itálico, sublinhado
-worksheet.Cells["A2"].Style.Font.Italic = true;
-worksheet.Cells["A3"].Style.Font.UnderLine = true;
-worksheet.Cells["A4"].Style.Font.Strike = true;
-```
-
-### Cor de Fundo
-
-```csharp
-using OfficeOpenXml.Style;
-
-var cell = worksheet.Cells["A1"];
-
-// Cor sólida
-cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
-cell.Style.Fill.BackgroundColor.SetColor(Color.LightBlue);
-
-// Cabeçalho azul
-var header = worksheet.Cells["A1:E1"];
-header.Style.Fill.PatternType = ExcelFillStyle.Solid;
-header.Style.Fill.BackgroundColor.SetColor(Color.DarkBlue);
-header.Style.Font.Color.SetColor(Color.White);
-```
-
-### Bordas
-
-```csharp
-var range = worksheet.Cells["A1:D10"];
-
-// Bordas ao redor
-range.Style.Border.Top.Style = ExcelBorderStyle.Thin;
-range.Style.Border.Left.Style = ExcelBorderStyle.Thin;
-range.Style.Border.Right.Style = ExcelBorderStyle.Thin;
-range.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
-
-// Cor da borda
-range.Style.Border.Top.Color.SetColor(Color.Black);
-
-// Borda grossa
-range.Style.Border.BorderAround(ExcelBorderStyle.Thick);
-```
-
-### Alinhamento
-
-```csharp
-var cell = worksheet.Cells["A1"];
-
-// Horizontal
-cell.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
-cell.Style.HorizontalAlignment = ExcelHorizontalAlignment.Right;
-cell.Style.HorizontalAlignment = ExcelHorizontalAlignment.Left;
-
-// Vertical
-cell.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
-cell.Style.VerticalAlignment = ExcelVerticalAlignment.Top;
-cell.Style.VerticalAlignment = ExcelVerticalAlignment.Bottom;
-
-// Quebrar texto
-cell.Style.WrapText = true;
-
-// Rotação
-cell.Style.TextRotation = 90; // 90 graus
-```
-
-### Formato de Número
-
-```csharp
-// Moeda
-worksheet.Cells["B2"].Style.Numberformat.Format = "R$ #,##0.00";
-
-// Percentual
-worksheet.Cells["C2"].Style.Numberformat.Format = "0.00%";
-
-// Data
-worksheet.Cells["D2"].Style.Numberformat.Format = "dd/mm/yyyy";
-
-// Data e hora
-worksheet.Cells["E2"].Style.Numberformat.Format = "dd/mm/yyyy hh:mm:ss";
-
-// Texto
-worksheet.Cells["F2"].Style.Numberformat.Format = "@";
-
-// Número com casas decimais
-worksheet.Cells["G2"].Style.Numberformat.Format = "#,##0.00";
-```
-
-### Largura e Altura
-
-```csharp
-// Largura de coluna
-worksheet.Column(1).Width = 20;
-worksheet.Column(2).Width = 15.5;
-
-// Altura de linha
-worksheet.Row(1).Height = 30;
-
-// Ocultar coluna/linha
-worksheet.Column(3).Hidden = true;
-worksheet.Row(5).Hidden = true;
-```
-
----
-
-## Fórmulas
-
-### Fórmulas Básicas
-
-```csharp
-// Soma
-worksheet.Cells["D2"].Formula = "=SUM(B2:C2)";
-
-// Média
-worksheet.Cells["E2"].Formula = "=AVERAGE(B2:B10)";
-
-// Máximo/Mínimo
-worksheet.Cells["F2"].Formula = "=MAX(B2:B10)";
-worksheet.Cells["G2"].Formula = "=MIN(B2:B10)";
-
-// Contar
-worksheet.Cells["H2"].Formula = "=COUNT(B2:B10)";
-worksheet.Cells["I2"].Formula = "=COUNTA(A2:A10)"; // Não vazias
-
-// Se
-worksheet.Cells["J2"].Formula = "=IF(B2>100,\"Alto\",\"Baixo\")";
-
-// VLookup
-worksheet.Cells["K2"].Formula = "=VLOOKUP(A2,Tabela!A:B,2,FALSE)";
-```
-
-### Calcular Fórmulas
-
-```csharp
-// Calcular todas as fórmulas
-worksheet.Calculate();
-
-// Ou calcular o workbook inteiro
-package.Workbook.Calculate();
-
-// Obter valor calculado
-var resultado = worksheet.Cells["D2"].Value;
-```
-
-### Fórmulas com Referências
-
-```csharp
-// Referência relativa
-worksheet.Cells["D2"].Formula = "=B2+C2";
-
-// Referência absoluta
-worksheet.Cells["D2"].Formula = "=$B$2+$C$2";
-
-// Referência mista
-worksheet.Cells["D2"].Formula = "=$B2+C$2";
-
-// Outra planilha
-worksheet.Cells["D2"].Formula = "=OutraAba!A1";
-```
-
----
-
-## Gráficos
-
-### Gráfico de Colunas
-
-```csharp
-using OfficeOpenXml.Drawing.Chart;
-
-var worksheet = package.Workbook.Worksheets.Add("Vendas");
-
-// Dados
-worksheet.Cells["A1"].Value = "Produto";
-worksheet.Cells["B1"].Value = "Vendas";
-worksheet.Cells["A2"].Value = "Mouse";
-worksheet.Cells["B2"].Value = 100;
-worksheet.Cells["A3"].Value = "Teclado";
-worksheet.Cells["B3"].Value = 150;
-worksheet.Cells["A4"].Value = "Monitor";
-worksheet.Cells["B4"].Value = 80;
-
-// Criar gráfico
-var chart = worksheet.Drawings.AddChart("GraficoVendas", eChartType.ColumnClustered);
-
-// Configurar série
-var series = chart.Series.Add("B2:B4", "A2:A4");
-series.Header = "Vendas por Produto";
-
-// Posição e tamanho
-chart.SetPosition(5, 0, 4, 0);
-chart.SetSize(600, 400);
-
-// Título
-chart.Title.Text = "Vendas por Produto";
-
-// Eixos
-chart.XAxis.Title.Text = "Produtos";
-chart.YAxis.Title.Text = "Quantidade";
-```
-
-### Gráfico de Linhas
-
-```csharp
-var chart = worksheet.Drawings.AddChart("GraficoLinhas", eChartType.Line);
-var series = chart.Series.Add("B2:B10", "A2:A10");
-series.Header = "Tendência";
-
-chart.Title.Text = "Vendas ao Longo do Tempo";
-chart.XAxis.Title.Text = "Meses";
-chart.YAxis.Title.Text = "Vendas";
-```
-
-### Gráfico de Pizza
-
-```csharp
-var chart = worksheet.Drawings.AddChart("GraficoPizza", eChartType.Pie);
-var series = chart.Series.Add("B2:B5", "A2:A5");
-
-chart.Title.Text = "Distribuição de Vendas";
-chart.Legend.Position = eLegendPosition.Right;
-
-// Mostrar valores
-var pieChart = chart as ExcelPieChart;
-pieChart.DataLabel.ShowPercent = true;
-pieChart.DataLabel.ShowLeaderLines = true;
-```
-
----
-
-## Tabelas
-
-### Criar Tabela
-
-```csharp
-var worksheet = package.Workbook.Worksheets.Add("Dados");
-
-// Adicionar dados
-worksheet.Cells["A1"].Value = "Nome";
-worksheet.Cells["B1"].Value = "Idade";
-worksheet.Cells["C1"].Value = "Salário";
-
-worksheet.Cells["A2"].Value = "João";
-worksheet.Cells["B2"].Value = 30;
-worksheet.Cells["C2"].Value = 5000;
-
-// Criar tabela
-var table = worksheet.Tables.Add(worksheet.Cells["A1:C2"], "TabelaPessoas");
-
-// Estilo da tabela
-table.TableStyle = TableStyles.Medium6;
-
-// Mostrar linha de totais
-table.ShowTotal = true;
-table.Columns[2].TotalsRowFunction = RowFunctions.Sum;
-table.Columns[2].TotalsRowLabel = "Total:";
-```
-
-### Filtros
-
-```csharp
-// Adicionar auto-filtro
-worksheet.Cells["A1:C10"].AutoFilter = true;
-
-// Aplicar filtro
-// (Filtros são aplicados pelo usuário no Excel)
-```
-
----
-
-## Exemplos Práticos
-
-### Exemplo 1: Relatório de Vendas
-
-```csharp
-using OfficeOpenXml;
-using System.Drawing;
-
-ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
-
-class RelatorioVendas
+// Bordas na tabela
+using (var range = worksheet.Cells[1, 1, lastRow, lastCol])
 {
-    public static void GerarRelatorio(List<Venda> vendas, string caminho)
-    {
-        using (var package = new ExcelPackage())
-        {
-            var worksheet = package.Workbook.Worksheets.Add("Vendas");
-            
-            // Cabeçalho
-            worksheet.Cells["A1"].Value = "Data";
-            worksheet.Cells["B1"].Value = "Produto";
-            worksheet.Cells["C1"].Value = "Quantidade";
-            worksheet.Cells["D1"].Value = "Valor Unitário";
-            worksheet.Cells["E1"].Value = "Total";
-            
-            // Formatar cabeçalho
-            using (var range = worksheet.Cells["A1:E1"])
-            {
-                range.Style.Font.Bold = true;
-                range.Style.Fill.PatternType = ExcelFillStyle.Solid;
-                range.Style.Fill.BackgroundColor.SetColor(Color.DarkBlue);
-                range.Style.Font.Color.SetColor(Color.White);
-                range.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
-            }
-            
-            // Dados
-            int row = 2;
-            foreach (var venda in vendas)
-            {
-                worksheet.Cells[row, 1].Value = venda.Data;
-                worksheet.Cells[row, 2].Value = venda.Produto;
-                worksheet.Cells[row, 3].Value = venda.Quantidade;
-                worksheet.Cells[row, 4].Value = venda.ValorUnitario;
-                worksheet.Cells[row, 5].Formula = $"=C{row}*D{row}";
-                
-                row++;
-            }
-            
-            // Formatação
-            worksheet.Cells["A2:A" + (row - 1)].Style.Numberformat.Format = "dd/mm/yyyy";
-            worksheet.Cells["D2:E" + (row - 1)].Style.Numberformat.Format = "R$ #,##0.00";
-            
-            // Totais
-            worksheet.Cells[row, 4].Value = "TOTAL:";
-            worksheet.Cells[row, 4].Style.Font.Bold = true;
-            worksheet.Cells[row, 5].Formula = $"=SUM(E2:E{row - 1})";
-            worksheet.Cells[row, 5].Style.Font.Bold = true;
-            worksheet.Cells[row, 5].Style.Numberformat.Format = "R$ #,##0.00";
-            
-            // Bordas
-            worksheet.Cells["A1:E" + row].Style.Border.Top.Style = ExcelBorderStyle.Thin;
-            worksheet.Cells["A1:E" + row].Style.Border.Left.Style = ExcelBorderStyle.Thin;
-            worksheet.Cells["A1:E" + row].Style.Border.Right.Style = ExcelBorderStyle.Thin;
-            worksheet.Cells["A1:E" + row].Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
-            
-            // Auto fit
-            worksheet.Cells.AutoFitColumns();
-            
-            // Salvar
-            FileInfo file = new FileInfo(caminho);
-            package.SaveAs(file);
-        }
-        
-        Console.WriteLine($"Relatório salvo em: {caminho}");
-    }
-}
-
-public class Venda
-{
-    public DateTime Data { get; set; }
-    public string Produto { get; set; }
-    public int Quantidade { get; set; }
-    public decimal ValorUnitario { get; set; }
+    range.Style.Border.Top.Style = ExcelBorderStyle.Thin;
+    range.Style.Border.Left.Style = ExcelBorderStyle.Thin;
+    range.Style.Border.Right.Style = ExcelBorderStyle.Thin;
+    range.Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
 }
 ```
 
-### Exemplo 2: Importar CSV para Excel
+### Integração com Workflow Principal
 
 ```csharp
-void ImportarCSVParaExcel(string csvPath, string excelPath)
+// No Workflow.cs principal - integrar ExcelReportTask
+public async Task<bool> ExecutarScrapingCompleto()
 {
-    var linhas = File.ReadAllLines(csvPath);
-    
-    using (var package = new ExcelPackage())
+    try
     {
-        var worksheet = package.Workbook.Worksheets.Add("Dados");
+        var inicioExecucao = DateTime.Now;
         
-        for (int i = 0; i < linhas.Length; i++)
+        // 1. Executar scraping normal...
+        var noticias = await ExtractionTask.ColetarTodasNoticias();
+        await MigrationTask.SalvarNoticias(noticias);
+        
+        // 2. Gerar relatórios se habilitados
+        if (Config.Instancia.Relatorios.ExportarApósExecução)
         {
-            var colunas = linhas[i].Split(',');
+            // CSV simples
+            await CsvExportTask.ExportarNoticias(noticias);
             
-            for (int j = 0; j < colunas.Length; j++)
+            // Excel avançado com gráficos
+            if (Config.Instancia.Relatorios.HabilitarRelatorioExcel)
             {
-                worksheet.Cells[i + 1, j + 1].Value = colunas[j];
+                await ExcelReportTask.GerarRelatorioCompleto(noticias, inicioExecucao);
             }
         }
         
-        // Formatação
-        if (linhas.Length > 0)
-        {
-            worksheet.Cells[1, 1, 1, linhas[0].Split(',').Length].Style.Font.Bold = true;
-        }
-        
-        worksheet.Cells.AutoFitColumns();
-        
-        package.SaveAs(new FileInfo(excelPath));
+        LoggingTask.RegistrarInfo($"🎯 Scraping + Relatórios completo: {noticias.Count} notícias");
+        return true;
     }
-}
-```
-
-### Exemplo 3: Dashboard com Múltiplas Abas
-
-```csharp
-void CriarDashboard(string caminho)
-{
-    using (var package = new ExcelPackage())
+    catch (Exception ex)
     {
-        // Aba 1: Dados Brutos
-        var dadosWs = package.Workbook.Worksheets.Add("Dados");
-        dadosWs.Cells["A1"].LoadFromCollection(ObterDados(), true);
-        
-        // Aba 2: Resumo
-        var resumoWs = package.Workbook.Worksheets.Add("Resumo");
-        resumoWs.Cells["A1"].Value = "Total de Registros:";
-        resumoWs.Cells["B1"].Formula = "=COUNTA(Dados!A:A)-1";
-        
-        resumoWs.Cells["A2"].Value = "Soma Total:";
-        resumoWs.Cells["B2"].Formula = "=SUM(Dados!C:C)";
-        
-        resumoWs.Cells["A3"].Value = "Média:";
-        resumoWs.Cells["B3"].Formula = "=AVERAGE(Dados!C:C)";
-        
-        // Aba 3: Gráficos
-        var graficosWs = package.Workbook.Worksheets.Add("Gráficos");
-        var chart = graficosWs.Drawings.AddChart("Grafico1", eChartType.ColumnClustered);
-        chart.Series.Add("Dados!C2:C10", "Dados!A2:A10");
-        chart.SetPosition(0, 0, 0, 0);
-        chart.SetSize(800, 400);
-        
-        package.SaveAs(new FileInfo(caminho));
+        LoggingTask.RegistrarErro("Erro no workflow completo", ex);
+        return false;
     }
 }
 ```
-
----
-
-## Boas Práticas
-
-### 1. Use using para Dispose
-
-```csharp
-// ✅ BOM
-using (var package = new ExcelPackage(file))
-{
-    // trabalhar com package
-}
-
-// ❌ RUIM
-var package = new ExcelPackage(file);
-// ... código sem dispose
-```
-
-### 2. Configure Licença
-
-```csharp
-// Sempre no início
-ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
-```
-
-### 3. Auto Fit Após Preencher
-
-```csharp
-// Preencher dados
-worksheet.Cells["A1"].LoadFromCollection(dados, true);
-
-// Depois auto fit
-worksheet.Cells.AutoFitColumns();
-```
-
-### 4. Calcule Fórmulas se Necessário
-
-```csharp
-worksheet.Calculate();
-// Agora pode ler valores calculados
-var total = worksheet.Cells["E10"].Value;
-```
-
-### 5. Verifique Dimensões
-
-```csharp
-if (worksheet.Dimension != null)
-{
-    var rowCount = worksheet.Dimension.Rows;
-    // processar
-}
-```
-
-### 6. Performance com Grandes Volumes
-
-```csharp
-// Para grandes volumes, desabilite cálculo automático
-package.Workbook.Calculate Mode = ExcelCalculationOption.Manual;
-
-// ... adicionar dados ...
-
-// Calcular no final
-package.Workbook.Calculate();
-```
-
----
-
-## Recursos Adicionais
-
-- **Site Oficial**: https://epplussoftware.com/
-- **GitHub**: https://github.com/EPPlusSoftware/EPPlus
-- **Documentação**: https://github.com/EPPlusSoftware/EPPlus/wiki
-- **Exemplos**: https://github.com/EPPlusSoftware/EPPlus.Sample.NetCore
-
----
-
-**Versão:** 1.0  
-**Última atualização:** Novembro 2025

@@ -139,6 +139,11 @@ public class NavegacaoConfig
     public int TimeoutSegundos { get; set; } = 30;
     public bool HeadlessMode { get; set; } = false;
     public string NavegadorPadrao { get; set; } = "chromium";
+    public int ViewportWidth { get; set; } = 1920;
+    public int ViewportHeight { get; set; } = 1080;
+    public string UserAgent { get; set; } = string.Empty;
+    public bool BloquearImagens { get; set; } = false;
+    public bool BloquearCSS { get; set; } = false;
 }
 
 public class ScrapingConfig

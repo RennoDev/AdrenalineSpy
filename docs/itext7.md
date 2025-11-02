@@ -1,467 +1,722 @@
-# iText7 - Manipulação de PDFs
+# iText7 - Geração de Relatórios PDF
 
-## Índice
-1. [Introdução](#introdução)
-2. [Instalação](#instalação)
-3. [Licenciamento](#licenciamento)
-4. [Criar PDF](#criar-pdf)
-5. [Ler/Extrair Texto](#ler-extrair-texto)
-6. [Modificar PDF](#modificar-pdf)
-7. [Exemplos Práticos](#exemplos-práticos)
+## O que é iText7
 
----
+**iText7** é uma biblioteca .NET para criar e manipular documentos PDF programaticamente, com recursos avançados de formatação, imagens e interatividade.
 
-## Introdução
+**Onde é usado no AdrenalineSpy:**
+- Gerar relatórios PDF executivos das notícias coletadas
+- Criar documentos com screenshots das páginas capturadas
+- Exportar relatórios de auditoria com links clicáveis
+- Gerar PDFs para arquivo permanente das notícias
+- Criar apresentações automáticas dos dados coletados
+- Relatórios de conformidade e logs em formato oficial
 
-**iText7** é uma biblioteca poderosa para criar e manipular documentos PDF em .NET.
+⚠️ **IMPORTANTE - Licenciamento**: iText7 possui licença **AGPL v3** (open source) e licença comercial. Para uso comercial, uma licença paga é necessária.
 
-### Vantagens
-- ✅ Criar PDFs do zero
-- ✅ Extrair texto e dados
-- ✅ Preencher formulários
-- ✅ Adicionar imagens e tabelas
-- ✅ Assinar digitalmente
-- ✅ Criptografar PDFs
+## Como Instalar
 
----
+### 1. Instalar Pacotes iText7
 
-## Instalação
-
-```bash
+```powershell
 dotnet add package itext7
-dotnet add package itext7.pdfhtml  # Para HTML to PDF
+dotnet add package itext7.bouncy-castle-adapter
 ```
 
----
+### 2. Verificar .csproj
 
-## Licenciamento
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <PackageReference Include="itext7" Version="8.0.2" />
+    <PackageReference Include="itext7.bouncy-castle-adapter" Version="8.0.2" />
+  </ItemGroup>
+</Project>
+```
 
-⚠️ **IMPORTANTE**: iText7 é AGPL (código aberto) mas requer licença comercial para uso comercial.
+### 3. Configurar Licença (OBRIGATÓRIO)
 
-- **Uso pessoal/educacional**: Gratuito
-- **Uso comercial**: Licença paga necessária
-- **Alternativa gratuita**: QuestPDF, PdfSharp
+**Para uso não comercial (AGPL v3):**
+```csharp
+// Não há configuração especial necessária para AGPL v3
+// Mas você deve cumprir os termos da licença AGPL
+```
 
----
+**Para uso comercial (licença paga):**
+```csharp
+// Configurar chave de licença comercial
+LicenseKey.LoadLicenseFile("path/to/itextkey.xml");
+```
 
-## Criar PDF
+## Implementar no AutomationSettings.json
 
-### PDF Básico
+Adicione configurações de PDF na seção `Relatorios`:
+
+```json
+{
+  "Navegacao": {
+    "UrlBase": "https://www.adrenaline.com.br",
+    "DelayEntrePaginas": 2000
+  },
+  "Database": {
+    "ConnectionString": "Server=localhost;Database=AdrenalineSpy;..."
+  },
+  "Relatorios": {
+    "HabilitarExportacaoCSV": true,
+    "HabilitarRelatorioExcel": true,
+    "HabilitarRelatorioPDF": true,
+    "DiretorioExportacao": "exports/",
+    "NomeArquivoPDF": "relatorio-adrenaline-{data}.pdf",
+    "ConfiguracaoPDF": {
+      "TituloDocumento": "Relatório AdrenalineSpy - Monitoramento de Notícias",
+      "Autor": "AdrenalineSpy RPA Bot",
+      "Assunto": "Coleta automatizada de notícias do Adrenaline.com.br",
+      "PalavrasChave": "adrenaline, tecnologia, games, automação, rpa",
+      "IncluirScreenshots": false,
+      "IncluirIndice": true,
+      "IncluirCabecalhoRodape": true,
+      "FontePadrao": "Arial",
+      "TamanhoFonteTitulo": 16,
+      "TamanhoFonteTexto": 11,
+      "MargemPagina": 50,
+      "OrientacaoPagina": "Portrait",
+      "CompressaoImagens": true
+    },
+    "LayoutPDF": {
+      "IncluirCapaDeFrente": true,
+      "IncluirResumoExecutivo": true,
+      "IncluirDetalhesNoticias": true,
+      "IncluirEstatisticas": true,
+      "IncluirAnexos": false,
+      "NoticiasAgrupadasPorCategoria": true,
+      "LimiteNoticiasDetalhadas": 50
+    }
+  },
+  "Logging": {
+    "Nivel": "Information",
+    "CaminhoArquivo": "logs/adrenaline-spy.log"
+  }
+}
+```
+
+**Configurações específicas do iText7:**
+- **`HabilitarRelatorioPDF`**: Liga/desliga geração de PDFs
+- **`ConfiguracaoPDF`**: Metadados e formatação dos documentos
+- **`LayoutPDF`**: Estrutura e conteúdo dos relatórios
+
+## Implementar no Config.cs
+
+Adicione classes de configuração para PDF:
+
+```csharp
+public class ConfiguracaoPDFConfig
+{
+    public string TituloDocumento { get; set; } = "Relatório AdrenalineSpy - Monitoramento de Notícias";
+    public string Autor { get; set; } = "AdrenalineSpy RPA Bot";
+    public string Assunto { get; set; } = "Coleta automatizada de notícias do Adrenaline.com.br";
+    public string PalavrasChave { get; set; } = "adrenaline, tecnologia, games, automação, rpa";
+    public bool IncluirScreenshots { get; set; } = false;
+    public bool IncluirIndice { get; set; } = true;
+    public bool IncluirCabecalhoRodape { get; set; } = true;
+    public string FontePadrao { get; set; } = "Arial";
+    public float TamanhoFonteTitulo { get; set; } = 16f;
+    public float TamanhoFonteTexto { get; set; } = 11f;
+    public float MargemPagina { get; set; } = 50f;
+    public string OrientacaoPagina { get; set; } = "Portrait";
+    public bool CompressaoImagens { get; set; } = true;
+}
+
+public class LayoutPDFConfig
+{
+    public bool IncluirCapaDeFrente { get; set; } = true;
+    public bool IncluirResumoExecutivo { get; set; } = true;
+    public bool IncluirDetalhesNoticias { get; set; } = true;
+    public bool IncluirEstatisticas { get; set; } = true;
+    public bool IncluirAnexos { get; set; } = false;
+    public bool NoticiasAgrupadasPorCategoria { get; set; } = true;
+    public int LimiteNoticiasDetalhadas { get; set; } = 50;
+}
+
+public class RelatoriosConfig
+{
+    // ... propriedades existentes (CSV, Excel) ...
+    public bool HabilitarRelatorioPDF { get; set; } = true;
+    public string NomeArquivoPDF { get; set; } = "relatorio-adrenaline-{data}.pdf";
+    public ConfiguracaoPDFConfig ConfiguracaoPDF { get; set; } = new();
+    public LayoutPDFConfig LayoutPDF { get; set; } = new();
+}
+
+public class Config
+{
+    // ... propriedades e métodos existentes ...
+    
+    /// <summary>
+    /// Obtém caminho completo do arquivo PDF
+    /// </summary>
+    public string ObterCaminhoPDF()
+    {
+        Directory.CreateDirectory(Relatorios.DiretorioExportacao);
+        
+        var nomeArquivo = Relatorios.NomeArquivoPDF
+            .Replace("{data}", DateTime.Now.ToString("yyyy-MM-dd"));
+        
+        return Path.Combine(Relatorios.DiretorioExportacao, nomeArquivo);
+    }
+}
+```
+
+## Montar nas Tasks
+
+Crie a classe `PDFReportTask.cs` na pasta `Workflow/Tasks/`:
+
+```csharp
+using iText.Html2pdf;
+using iText.IO.Font.Constants;
+using iText.IO.Image;
+using iText.Kernel.Colors;
+using iText.Kernel.Events;
+using iText.Kernel.Font;
+using iText.Kernel.Geom;
+using iText.Kernel.Pdf;
+using iText.Kernel.Pdf.Canvas.Draw;
+using iText.Layout;
+using iText.Layout.Borders;
+using iText.Layout.Element;
+using iText.Layout.Properties;
+
+namespace AdrenalineSpy.Workflow.Tasks;
+
+/// <summary>
+/// Gerencia geração de relatórios PDF para o AdrenalineSpy
+/// </summary>
+public static class PDFReportTask
+{
+    /// <summary>
+    /// Gera relatório PDF completo das notícias coletadas
+    /// </summary>
+    public static async Task<bool> GerarRelatorioPDF(List<Noticia> noticias, DateTime dataExecucao)
+    {
+        try
+        {
+            if (!Config.Instancia.Relatorios.HabilitarRelatorioPDF)
+            {
+                LoggingTask.RegistrarInfo("📄 Relatório PDF desabilitado nas configurações");
+                return true;
+            }
+
+            if (noticias?.Any() != true)
+            {
+                LoggingTask.RegistrarAviso("📄 Nenhuma notícia para gerar relatório PDF");
+                return false;
+            }
+
+            var caminhoArquivo = Config.Instancia.ObterCaminhoPDF();
+            var config = Config.Instancia.Relatorios.ConfiguracaoPDF;
+
+            // Criar documento PDF
+            using var writer = new PdfWriter(caminhoArquivo);
+            using var pdf = new PdfDocument(writer);
+            using var document = new Document(pdf);
+
+            // Configurar documento
+            ConfigurarPropriedadesPDF(pdf, config, dataExecucao);
+            ConfigurarLayoutDocumento(document, config);
+
+            // Gerar conteúdo do relatório
+            if (Config.Instancia.Relatorios.LayoutPDF.IncluirCapaDeFrente)
+            {
+                AdicionarCapaFrente(document, config, dataExecucao, noticias.Count);
+            }
+
+            if (Config.Instancia.Relatorios.LayoutPDF.IncluirResumoExecutivo)
+            {
+                AdicionarResumoExecutivo(document, noticias, dataExecucao);
+            }
+
+            if (Config.Instancia.Relatorios.LayoutPDF.IncluirEstatisticas)
+            {
+                AdicionarEstatisticas(document, noticias);
+            }
+
+            if (Config.Instancia.Relatorios.LayoutPDF.IncluirDetalhesNoticias)
+            {
+                AdicionarDetalhesNoticias(document, noticias);
+            }
+
+            LoggingTask.RegistrarInfo($"📄 Relatório PDF gerado: {Path.GetFileName(caminhoArquivo)} ({noticias.Count} notícias)");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro("Erro ao gerar relatório PDF", ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Configura propriedades do documento PDF
+    /// </summary>
+    private static void ConfigurarPropriedadesPDF(PdfDocument pdf, ConfiguracaoPDFConfig config, DateTime dataExecucao)
+    {
+        var info = pdf.GetDocumentInfo();
+        info.SetTitle(config.TituloDocumento);
+        info.SetAuthor(config.Autor);
+        info.SetSubject(config.Assunto);
+        info.SetKeywords(config.PalavrasChave);
+        info.SetCreator("AdrenalineSpy RPA - iText7");
+        info.SetCreationDate(DateTimeOffset.Now);
+    }
+
+    /// <summary>
+    /// Configura layout e margens do documento
+    /// </summary>
+    private static void ConfigurarLayoutDocumento(Document document, ConfiguracaoPDFConfig config)
+    {
+        var margem = config.MargemPagina;
+        document.SetMargins(margem, margem, margem, margem);
+        
+        // Configurar fonte padrão
+        try
+        {
+            var font = PdfFontFactory.CreateFont(StandardFonts.HELVETICA);
+            document.SetFont(font).SetFontSize(config.TamanhoFonteTexto);
+        }
+        catch
+        {
+            // Usar fonte padrão se houver erro
+            LoggingTask.RegistrarAviso("📄 Usando fonte padrão do PDF");
+        }
+    }
+
+    /// <summary>
+    /// Adiciona capa do relatório
+    /// </summary>
+    private static void AdicionarCapaFrente(Document document, ConfiguracaoPDFConfig config, DateTime dataExecucao, int totalNoticias)
+    {
+        // Título principal
+        var titulo = new Paragraph(config.TituloDocumento)
+            .SetTextAlignment(TextAlignment.CENTER)
+            .SetFontSize(config.TamanhoFonteTitulo + 4)
+            .SetBold()
+            .SetFontColor(ColorConstants.DARK_GRAY)
+            .SetMarginTop(100);
+
+        document.Add(titulo);
+
+        // Subtítulo
+        var subtitulo = new Paragraph("Relatório Automatizado de Coleta de Notícias")
+            .SetTextAlignment(TextAlignment.CENTER)
+            .SetFontSize(config.TamanhoFonteTexto + 2)
+            .SetItalic()
+            .SetMarginBottom(50);
+
+        document.Add(subtitulo);
+
+        // Informações da execução
+        var tabela = new Table(2).UseAllAvailableWidth();
+        tabela.SetMarginTop(50);
+
+        AdicionarLinhaTabela(tabela, "🌐 Site Monitorado:", "Adrenaline.com.br");
+        AdicionarLinhaTabela(tabela, "📅 Data de Execução:", dataExecucao.ToString("dd/MM/yyyy HH:mm:ss"));
+        AdicionarLinhaTabela(tabela, "📰 Total de Notícias:", totalNoticias.ToString());
+        AdicionarLinhaTabela(tabela, "🤖 Gerado por:", "AdrenalineSpy RPA");
+
+        document.Add(tabela);
+
+        // Quebra de página
+        document.Add(new AreaBreak(AreaBreakType.NEXT_PAGE));
+    }
+
+    /// <summary>
+    /// Adiciona resumo executivo
+    /// </summary>
+    private static void AdicionarResumoExecutivo(Document document, List<Noticia> noticias, DateTime dataExecucao)
+    {
+        // Título da seção
+        var titulo = new Paragraph("📋 Resumo Executivo")
+            .SetFontSize(Config.Instancia.Relatorios.ConfiguracaoPDF.TamanhoFonteTitulo)
+            .SetBold()
+            .SetMarginBottom(20);
+
+        document.Add(titulo);
+
+        // Linha separadora
+        document.Add(new LineSeparator(new SolidLine()));
+        document.Add(new Paragraph("\n"));
+
+        // Estatísticas principais
+        var categorias = noticias.GroupBy(n => n.Categoria)
+            .Select(g => new { Categoria = g.Key, Quantidade = g.Count() })
+            .OrderByDescending(x => x.Quantidade)
+            .ToList();
+
+        var resumo = new Paragraph()
+            .Add($"Este relatório apresenta o resultado da coleta automática de notícias " +
+                 $"realizada em {dataExecucao:dd/MM/yyyy} às {dataExecucao:HH:mm:ss}. ")
+            .Add($"Foram coletadas {noticias.Count} notícias distribuídas em {categorias.Count} categorias diferentes.\n\n");
+
+        document.Add(resumo);
+
+        // Distribuição por categoria
+        document.Add(new Paragraph("🏷️ Distribuição por Categoria:").SetBold().SetMarginTop(10));
+
+        foreach (var categoria in categorias.Take(5)) // Top 5 categorias
+        {
+            var percentual = (categoria.Quantidade * 100.0 / noticias.Count);
+            var linha = new Paragraph($"• {categoria.Categoria}: {categoria.Quantidade} notícias ({percentual:F1}%)")
+                .SetMarginLeft(20);
+            document.Add(linha);
+        }
+
+        document.Add(new Paragraph("\n"));
+    }
+
+    /// <summary>
+    /// Adiciona estatísticas detalhadas
+    /// </summary>
+    private static void AdicionarEstatisticas(Document document, List<Noticia> noticias)
+    {
+        var titulo = new Paragraph("📊 Estatísticas Detalhadas")
+            .SetFontSize(Config.Instancia.Relatorios.ConfiguracaoPDF.TamanhoFonteTitulo)
+            .SetBold()
+            .SetMarginTop(30)
+            .SetMarginBottom(20);
+
+        document.Add(titulo);
+        document.Add(new LineSeparator(new SolidLine()));
+
+        // Tabela de estatísticas por categoria
+        var tabela = new Table(3).UseAllAvailableWidth();
+        tabela.SetMarginTop(20);
+
+        // Cabeçalho
+        tabela.AddHeaderCell(new Cell().Add(new Paragraph("Categoria").SetBold()));
+        tabela.AddHeaderCell(new Cell().Add(new Paragraph("Quantidade").SetBold()));
+        tabela.AddHeaderCell(new Cell().Add(new Paragraph("Percentual").SetBold()));
+
+        var categorias = noticias.GroupBy(n => n.Categoria)
+            .Select(g => new { Categoria = g.Key, Quantidade = g.Count() })
+            .OrderByDescending(x => x.Quantidade);
+
+        foreach (var categoria in categorias)
+        {
+            var percentual = (categoria.Quantidade * 100.0 / noticias.Count);
+            
+            tabela.AddCell(categoria.Categoria);
+            tabela.AddCell(new Cell().Add(new Paragraph(categoria.Quantidade.ToString()))
+                .SetTextAlignment(TextAlignment.CENTER));
+            tabela.AddCell(new Cell().Add(new Paragraph($"{percentual:F1}%"))
+                .SetTextAlignment(TextAlignment.CENTER));
+        }
+
+        document.Add(tabela);
+    }
+
+    /// <summary>
+    /// Adiciona detalhes das notícias
+    /// </summary>
+    private static void AdicionarDetalhesNoticias(Document document, List<Noticia> noticias)
+    {
+        var config = Config.Instancia.Relatorios.LayoutPDF;
+        
+        if (config.NoticiasAgrupadasPorCategoria)
+        {
+            AdicionarNoticiasAgrupadasPorCategoria(document, noticias);
+        }
+        else
+        {
+            AdicionarNoticiasSequenciais(document, noticias);
+        }
+    }
+
+    /// <summary>
+    /// Adiciona notícias agrupadas por categoria
+    /// </summary>
+    private static void AdicionarNoticiasAgrupadasPorCategoria(Document document, List<Noticia> noticias)
+    {
+        var limite = Config.Instancia.Relatorios.LayoutPDF.LimiteNoticiasDetalhadas;
+        var noticiasLimitadas = noticias.Take(limite).ToList();
+
+        var categorias = noticiasLimitadas.GroupBy(n => n.Categoria).OrderBy(g => g.Key);
+
+        foreach (var grupo in categorias)
+        {
+            // Nova página para cada categoria
+            document.Add(new AreaBreak(AreaBreakType.NEXT_PAGE));
+
+            // Título da categoria
+            var tituloCategoria = new Paragraph($"📁 {grupo.Key}")
+                .SetFontSize(Config.Instancia.Relatorios.ConfiguracaoPDF.TamanhoFonteTitulo)
+                .SetBold()
+                .SetMarginBottom(20);
+
+            document.Add(tituloCategoria);
+            document.Add(new LineSeparator(new SolidLine()));
+            document.Add(new Paragraph("\n"));
+
+            // Notícias da categoria
+            foreach (var noticia in grupo.OrderByDescending(n => n.DataPublicacao))
+            {
+                AdicionarDetalheNoticia(document, noticia);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Adiciona notícias em sequência
+    /// </summary>
+    private static void AdicionarNoticiasSequenciais(Document document, List<Noticia> noticias)
+    {
+        var titulo = new Paragraph("📄 Detalhes das Notícias")
+            .SetFontSize(Config.Instancia.Relatorios.ConfiguracaoPDF.TamanhoFonteTitulo)
+            .SetBold()
+            .SetMarginTop(30)
+            .SetMarginBottom(20);
+
+        document.Add(titulo);
+        document.Add(new LineSeparator(new SolidLine()));
+
+        var limite = Config.Instancia.Relatorios.LayoutPDF.LimiteNoticiasDetalhadas;
+        var noticiasLimitadas = noticias.Take(limite)
+            .OrderByDescending(n => n.DataPublicacao);
+
+        foreach (var noticia in noticiasLimitadas)
+        {
+            AdicionarDetalheNoticia(document, noticia);
+        }
+    }
+
+    /// <summary>
+    /// Adiciona detalhe de uma notícia específica
+    /// </summary>
+    private static void AdicionarDetalheNoticia(Document document, Noticia noticia)
+    {
+        // Container da notícia com borda
+        var div = new Div()
+            .SetBorder(new SolidBorder(ColorConstants.LIGHT_GRAY, 1))
+            .SetPadding(15)
+            .SetMarginBottom(15);
+
+        // Título da notícia
+        var titulo = new Paragraph(noticia.Titulo)
+            .SetBold()
+            .SetFontSize(Config.Instancia.Relatorios.ConfiguracaoPDF.TamanhoFonteTexto + 1)
+            .SetMarginBottom(5);
+
+        div.Add(titulo);
+
+        // Metadados
+        var metadados = new Paragraph()
+            .Add($"📅 {noticia.DataPublicacao:dd/MM/yyyy HH:mm} | ")
+            .Add($"🏷️ {noticia.Categoria} | ")
+            .Add("🔗 ")
+            .Add(new Link("Ver no site", PdfAction.CreateURI(noticia.Url))
+                .SetFontColor(ColorConstants.BLUE))
+            .SetFontSize(Config.Instancia.Relatorios.ConfiguracaoPDF.TamanhoFonteTexto - 1)
+            .SetMarginBottom(10);
+
+        div.Add(metadados);
+
+        // Conteúdo (primeiros 500 caracteres)
+        if (!string.IsNullOrWhiteSpace(noticia.Conteudo))
+        {
+            var conteudoPreview = noticia.Conteudo.Length > 500 
+                ? noticia.Conteudo.Substring(0, 500) + "..."
+                : noticia.Conteudo;
+
+            var conteudo = new Paragraph(conteudoPreview)
+                .SetFontSize(Config.Instancia.Relatorios.ConfiguracaoPDF.TamanhoFonteTexto)
+                .SetTextAlignment(TextAlignment.JUSTIFIED);
+
+            div.Add(conteudo);
+        }
+
+        document.Add(div);
+    }
+
+    /// <summary>
+    /// Adiciona linha à tabela de informações
+    /// </summary>
+    private static void AdicionarLinhaTabela(Table tabela, string label, string valor)
+    {
+        tabela.AddCell(new Cell().Add(new Paragraph(label).SetBold()));
+        tabela.AddCell(new Cell().Add(new Paragraph(valor)));
+    }
+}
+```
+
+## Métodos Mais Usados
+
+### Criar Documento PDF Básico
 
 ```csharp
 using iText.Kernel.Pdf;
 using iText.Layout;
 using iText.Layout.Element;
 
-void CriarPDFSimples()
-{
-    string dest = "documento.pdf";
-    
-    using (PdfWriter writer = new PdfWriter(dest))
-    using (PdfDocument pdf = new PdfDocument(writer))
-    using (Document document = new Document(pdf))
-    {
-        // Adicionar parágrafo
-        document.Add(new Paragraph("Olá, Mundo!"));
-        
-        // Adicionar texto formatado
-        document.Add(new Paragraph("Este é um PDF criado com iText7")
-            .SetFontSize(20)
-            .SetBold());
-    }
-    
-    Console.WriteLine($"PDF criado: {dest}");
-}
+// Criar PDF simples
+var caminhoArquivo = "relatorio-adrenaline.pdf";
+using var writer = new PdfWriter(caminhoArquivo);
+using var pdf = new PdfDocument(writer);
+using var document = new Document(pdf);
+
+// Adicionar título
+document.Add(new Paragraph("Relatório AdrenalineSpy")
+    .SetFontSize(18)
+    .SetBold()
+    .SetTextAlignment(TextAlignment.CENTER));
+
+LoggingTask.RegistrarInfo("📄 PDF básico criado");
 ```
 
-### PDF com Tabelas
+### Adicionar Tabelas com Dados
 
 ```csharp
-using iText.Layout.Element;
+// Criar tabela de notícias
+var tabela = new Table(3).UseAllAvailableWidth();
 
-void CriarPDFComTabela()
+// Cabeçalhos
+tabela.AddHeaderCell("Título");
+tabela.AddHeaderCell("Categoria");  
+tabela.AddHeaderCell("Data");
+
+// Dados
+foreach (var noticia in noticias)
 {
-    using (PdfWriter writer = new PdfWriter("tabela.pdf"))
-    using (PdfDocument pdf = new PdfDocument(writer))
-    using (Document document = new Document(pdf))
-    {
-        // Criar tabela com 3 colunas
-        Table table = new Table(3);
-        
-        // Cabeçalhos
-        table.AddHeaderCell("Nome");
-        table.AddHeaderCell("Idade");
-        table.AddHeaderCell("Email");
-        
-        // Dados
-        table.AddCell("João");
-        table.AddCell("30");
-        table.AddCell("joao@email.com");
-        
-        table.AddCell("Maria");
-        table.AddCell("25");
-        table.AddCell("maria@email.com");
-        
-        document.Add(table);
-    }
+    tabela.AddCell(noticia.Titulo);
+    tabela.AddCell(noticia.Categoria);
+    tabela.AddCell(noticia.DataPublicacao.ToString("dd/MM/yyyy"));
 }
+
+document.Add(tabela);
+LoggingTask.RegistrarInfo("📊 Tabela de notícias adicionada ao PDF");
 ```
 
-### PDF com Imagens
+### Adicionar Links Clicáveis
 
 ```csharp
-using iText.IO.Image;
-using iText.Layout.Element;
+// Link para URL da notícia
+var linkTexto = new Link("🔗 Ver notícia completa", PdfAction.CreateURI(noticia.Url))
+    .SetFontColor(ColorConstants.BLUE)
+    .SetUnderline();
 
-void CriarPDFComImagem()
-{
-    using (PdfWriter writer = new PdfWriter("imagem.pdf"))
-    using (PdfDocument pdf = new PdfDocument(writer))
-    using (Document document = new Document(pdf))
-    {
-        document.Add(new Paragraph("Documento com Imagem"));
-        
-        // Adicionar imagem
-        ImageData imageData = ImageDataFactory.Create("logo.png");
-        Image image = new Image(imageData);
-        
-        // Redimensionar
-        image.SetWidth(200);
-        image.SetAutoScale(true);
-        
-        document.Add(image);
-    }
-}
+var paragrafo = new Paragraph()
+    .Add("Acesse: ")
+    .Add(linkTexto);
+
+document.Add(paragrafo);
 ```
 
----
-
-## Ler/Extrair Texto
-
-### Extrair Todo o Texto
+### Configurar Propriedades do Documento
 
 ```csharp
-using iText.Kernel.Pdf;
-using iText.Kernel.Pdf.Canvas.Parser;
-using iText.Kernel.Pdf.Canvas.Parser.Listener;
-
-string ExtrairTextoPDF(string pdfPath)
-{
-    using (PdfDocument pdfDoc = new PdfDocument(new PdfReader(pdfPath)))
-    {
-        var text = new StringBuilder();
-        
-        for (int page = 1; page <= pdfDoc.GetNumberOfPages(); page++)
-        {
-            var strategy = new LocationTextExtractionStrategy();
-            string pageText = PdfTextExtractor.GetTextFromPage(pdfDoc.GetPage(page), strategy);
-            text.AppendLine(pageText);
-        }
-        
-        return text.ToString();
-    }
-}
-```
-
-### Ler Metadata
-
-```csharp
-void LerMetadata(string pdfPath)
-{
-    using (PdfDocument pdfDoc = new PdfDocument(new PdfReader(pdfPath)))
-    {
-        var info = pdfDoc.GetDocumentInfo();
-        
-        Console.WriteLine($"Título: {info.GetTitle()}");
-        Console.WriteLine($"Autor: {info.GetAuthor()}");
-        Console.WriteLine($"Criador: {info.GetCreator()}");
-        Console.WriteLine($"Páginas: {pdfDoc.GetNumberOfPages()}");
-    }
-}
-```
-
----
-
-## Modificar PDF
-
-### Adicionar Página a PDF Existente
-
-```csharp
-void AdicionarPagina(string pdfPath)
-{
-    using (PdfDocument pdfDoc = new PdfDocument(new PdfReader(pdfPath), new PdfWriter("modificado.pdf")))
-    using (Document document = new Document(pdfDoc))
-    {
-        // Adicionar nova página
-        document.Add(new AreaBreak(AreaBreakType.NEXT_PAGE));
-        document.Add(new Paragraph("Nova Página Adicionada"));
-    }
-}
-```
-
-### Mesclar PDFs
-
-```csharp
-using iText.Kernel.Utils;
-
-void MesclarPDFs(string[] arquivos, string saida)
-{
-    using (PdfDocument pdfMerged = new PdfDocument(new PdfWriter(saida)))
-    {
-        PdfMerger merger = new PdfMerger(pdfMerged);
-        
-        foreach (string arquivo in arquivos)
-        {
-            using (PdfDocument pdf = new PdfDocument(new PdfReader(arquivo)))
-            {
-                merger.Merge(pdf, 1, pdf.GetNumberOfPages());
-            }
-        }
-    }
-    
-    Console.WriteLine($"PDFs mesclados em: {saida}");
-}
-```
-
-### Dividir PDF
-
-```csharp
-void DividirPDF(string pdfPath, string outputFolder)
-{
-    using (PdfDocument pdfDoc = new PdfDocument(new PdfReader(pdfPath)))
-    {
-        for (int page = 1; page <= pdfDoc.GetNumberOfPages(); page++)
-        {
-            string outputPath = Path.Combine(outputFolder, $"pagina_{page}.pdf");
-            
-            using (PdfDocument newPdf = new PdfDocument(new PdfWriter(outputPath)))
-            {
-                pdfDoc.CopyPagesTo(page, page, newPdf);
-            }
-        }
-    }
-}
-```
-
----
-
-## Exemplos Práticos
-
-### Exemplo 1: Relatório Formatado
-
-```csharp
-using iText.Kernel.Colors;
-using iText.Kernel.Font;
-using iText.IO.Font.Constants;
-
-void GerarRelatorio(List<Venda> vendas)
-{
-    using (PdfWriter writer = new PdfWriter("relatorio_vendas.pdf"))
-    using (PdfDocument pdf = new PdfDocument(writer))
-    using (Document document = new Document(pdf))
-    {
-        // Título
-        PdfFont boldFont = PdfFontFactory.CreateFont(StandardFonts.HELVETICA_BOLD);
-        Paragraph title = new Paragraph("Relatório de Vendas")
-            .SetFont(boldFont)
-            .SetFontSize(24)
-            .SetTextAlignment(TextAlignment.CENTER);
-        document.Add(title);
-        
-        // Data
-        document.Add(new Paragraph($"Gerado em: {DateTime.Now:dd/MM/yyyy HH:mm}")
-            .SetFontSize(10)
-            .SetTextAlignment(TextAlignment.RIGHT));
-        
-        // Tabela
-        Table table = new Table(new float[] { 2, 1, 1, 1 });
-        table.SetWidth(UnitValue.CreatePercentValue(100));
-        
-        // Cabeçalhos
-        table.AddHeaderCell(new Cell().Add(new Paragraph("Produto").SetBold())
-            .SetBackgroundColor(ColorConstants.LIGHT_GRAY));
-        table.AddHeaderCell(new Cell().Add(new Paragraph("Qtd").SetBold())
-            .SetBackgroundColor(ColorConstants.LIGHT_GRAY));
-        table.AddHeaderCell(new Cell().Add(new Paragraph("Preço").SetBold())
-            .SetBackgroundColor(ColorConstants.LIGHT_GRAY));
-        table.AddHeaderCell(new Cell().Add(new Paragraph("Total").SetBold())
-            .SetBackgroundColor(ColorConstants.LIGHT_GRAY));
-        
-        // Dados
-        decimal totalGeral = 0;
-        foreach (var venda in vendas)
-        {
-            decimal total = venda.Quantidade * venda.Preco;
-            totalGeral += total;
-            
-            table.AddCell(venda.Produto);
-            table.AddCell(venda.Quantidade.ToString());
-            table.AddCell($"R$ {venda.Preco:N2}");
-            table.AddCell($"R$ {total:N2}");
-        }
-        
-        // Total
-        table.AddCell(new Cell(1, 3)
-            .Add(new Paragraph("TOTAL GERAL").SetBold())
-            .SetTextAlignment(TextAlignment.RIGHT));
-        table.AddCell(new Cell()
-            .Add(new Paragraph($"R$ {totalGeral:N2}").SetBold()));
-        
-        document.Add(table);
-    }
-}
-```
-
-### Exemplo 2: HTML para PDF
-
-```csharp
-using iText.Html2pdf;
-
-void ConverterHTMLparaPDF(string htmlPath, string pdfPath)
-{
-    HtmlConverter.ConvertToPdf(new FileInfo(htmlPath), new FileInfo(pdfPath));
-}
-
-void HTMLStringParaPDF(string html, string pdfPath)
-{
-    using (FileStream pdfDest = File.Open(pdfPath, FileMode.Create))
-    {
-        ConverterProperties properties = new ConverterProperties();
-        HtmlConverter.ConvertToPdf(html, pdfDest, properties);
-    }
-}
-```
-
-### Exemplo 3: Preencher Formulário PDF
-
-```csharp
-using iText.Forms;
-using iText.Forms.Fields;
-
-void PreencherFormulario(string templatePath, string outputPath)
-{
-    using (PdfDocument pdfDoc = new PdfDocument(new PdfReader(templatePath), new PdfWriter(outputPath)))
-    {
-        PdfAcroForm form = PdfAcroForm.GetAcroForm(pdfDoc, true);
-        
-        IDictionary<string, PdfFormField> fields = form.GetFormFields();
-        
-        // Preencher campos
-        fields["nome"].SetValue("João Silva");
-        fields["email"].SetValue("joao@email.com");
-        fields["data"].SetValue(DateTime.Now.ToString("dd/MM/yyyy"));
-        
-        // Achatar formulário (tornar não editável)
-        form.FlattenFields();
-    }
-}
-```
-
-### Exemplo 4: Adicionar Marca d'água
-
-```csharp
-using iText.Kernel.Pdf.Canvas;
-using iText.Kernel.Pdf.Extgstate;
-
-void AdicionarMarcaDagua(string inputPath, string outputPath, string texto)
-{
-    using (PdfDocument pdfDoc = new PdfDocument(new PdfReader(inputPath), new PdfWriter(outputPath)))
-    {
-        for (int i = 1; i <= pdfDoc.GetNumberOfPages(); i++)
-        {
-            PdfPage page = pdfDoc.GetPage(i);
-            Rectangle pageSize = page.GetPageSize();
-            
-            PdfCanvas canvas = new PdfCanvas(page);
-            
-            // Transparência
-            canvas.SaveState();
-            PdfExtGState gs = new PdfExtGState();
-            gs.SetFillOpacity(0.2f);
-            canvas.SetExtGState(gs);
-            
-            // Texto
-            canvas.BeginText()
-                .SetFontAndSize(PdfFontFactory.CreateFont(StandardFonts.HELVETICA_BOLD), 60)
-                .SetColor(ColorConstants.GRAY, true)
-                .MoveText(pageSize.GetWidth() / 2 - 150, pageSize.GetHeight() / 2)
-                .ShowText(texto)
-                .EndText();
-            
-            canvas.RestoreState();
-        }
-    }
-}
-```
-
----
-
-## Boas Práticas
-
-### 1. Use using para Dispose
-
-```csharp
-using (PdfWriter writer = new PdfWriter(dest))
-using (PdfDocument pdf = new PdfDocument(writer))
-using (Document document = new Document(pdf))
-{
-    // trabalhar aqui
-}
-```
-
-### 2. Defina Metadata
-
-```csharp
+// Metadados do PDF
 var info = pdf.GetDocumentInfo();
-info.SetTitle("Meu Documento");
-info.SetAuthor("João Silva");
-info.SetCreator("MeuApp v1.0");
+info.SetTitle("Relatório AdrenalineSpy");
+info.SetAuthor("AdrenalineSpy RPA");
+info.SetSubject("Coleta automatizada de notícias");
+info.SetKeywords("adrenaline, tecnologia, automação");
+info.SetCreationDate(DateTimeOffset.Now);
+
+LoggingTask.RegistrarInfo("📝 Propriedades do PDF configuradas");
 ```
 
-### 3. Trate Exceções
+### Adicionar Imagens/Screenshots
 
 ```csharp
-try
+// Adicionar screenshot se disponível
+if (File.Exists(caminhoScreenshot))
 {
-    // Operações PDF
-}
-catch (iText.IO.Exceptions.IOException ex)
-{
-    Console.WriteLine($"Erro de leitura: {ex.Message}");
-}
-catch (PdfException ex)
-{
-    Console.WriteLine($"Erro PDF: {ex.Message}");
+    var imageData = ImageDataFactory.Create(caminhoScreenshot);
+    var image = new Image(imageData);
+    
+    // Redimensionar para caber na página
+    image.SetWidth(400);
+    image.SetAutoScale(true);
+    
+    document.Add(image);
+    LoggingTask.RegistrarInfo("📸 Screenshot adicionado ao PDF");
 }
 ```
 
----
+### Integração com Workflow Principal
 
-## Alternativas Gratuitas
+```csharp
+// No Workflow.cs - adicionar geração de PDF
+public async Task<bool> ExecutarScrapingCompleto()
+{
+    try
+    {
+        var inicioExecucao = DateTime.Now;
+        
+        // 1. Executar scraping...
+        var noticias = await ExtractionTask.ColetarTodasNoticias();
+        await MigrationTask.SalvarNoticias(noticias);
+        
+        // 2. Gerar todos os tipos de relatório
+        if (Config.Instancia.Relatorios.ExportarApósExecução)
+        {
+            var tasks = new List<Task<bool>>();
+            
+            // CSV rápido
+            if (Config.Instancia.Relatorios.HabilitarExportacaoCSV)
+            {
+                tasks.Add(CsvExportTask.ExportarNoticias(noticias));
+            }
+            
+            // Excel com gráficos
+            if (Config.Instancia.Relatorios.HabilitarRelatorioExcel)
+            {
+                tasks.Add(ExcelReportTask.GerarRelatorioCompleto(noticias, inicioExecucao));
+            }
+            
+            // PDF executivo
+            if (Config.Instancia.Relatorios.HabilitarRelatorioPDF)
+            {
+                tasks.Add(PDFReportTask.GerarRelatorioPDF(noticias, inicioExecucao));
+            }
+            
+            // Executar relatórios em paralelo
+            var resultados = await Task.WhenAll(tasks);
+            var sucessos = resultados.Count(r => r);
+            
+            LoggingTask.RegistrarInfo($"📊 Relatórios gerados: {sucessos}/{tasks.Count} formatos");
+        }
+        
+        return true;
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro("Erro no workflow com relatórios", ex);
+        return false;
+    }
+}
+```
 
-Se iText7 não for viável (licença), considere:
+### Formatação Avançada e Estilos
 
-1. **QuestPDF** - Moderno, fluent API, totalmente gratuito
-   ```bash
-   dotnet add package QuestPDF
-   ```
+```csharp
+// Parágrafos com formatação rica
+var titulo = new Paragraph("📊 Estatísticas de Coleta")
+    .SetFontSize(16)
+    .SetBold()
+    .SetFontColor(ColorConstants.DARK_BLUE)
+    .SetTextAlignment(TextAlignment.CENTER)
+    .SetMarginBottom(20);
 
-2. **PdfSharpCore** - Fork gratuito do PdfSharp
-   ```bash
-   dotnet add package PdfSharpCore
-   ```
+// Bordas e backgrounds
+var div = new Div()
+    .SetBorder(new SolidBorder(ColorConstants.GRAY, 1))
+    .SetBackgroundColor(ColorConstants.LIGHT_GRAY)
+    .SetPadding(10)
+    .SetMarginBottom(15);
 
-3. **Playwright/Puppeteer** - HTML to PDF via navegador
+div.Add(new Paragraph("Conteúdo destacado"));
+document.Add(div);
 
----
-
-## Recursos Adicionais
-
-- **Site Oficial**: https://itextpdf.com/
-- **Documentação**: https://kb.itextpdf.com/home
-- **GitHub**: https://github.com/itext/itext7-dotnet
-
----
-
-**Versão:** 1.0  
-**Última atualização:** Novembro 2025
+LoggingTask.RegistrarInfo("🎨 Formatação avançada aplicada");
+```

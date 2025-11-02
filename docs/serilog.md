@@ -1,53 +1,69 @@
-# Serilog - Logging Estruturado
+# 📝 Serilog - Sistema de Logging do AdrenalineSpy
 
-## 📋 Índice
-1. [Introdução](#introdução)
-2. [Instalação](#instalação)
-3. [Configuração no Projeto](#configuração-no-projeto)
-4. [Uso no Código](#uso-no-código)
-5. [Níveis de Log](#níveis-de-log)
-6. [Enriquecimento Avançado (Opcional)](#enriquecimento-avançado-opcional)
+## O que é
 
----
+**Serilog:** Biblioteca de logging estruturado para .NET que registra eventos da aplicação  
+**Por que usar:** RPA sem logs é impossível de debugar quando algo dá errado  
 
-## Introdução
+**Onde é usado no AdrenalineSpy:**
+- LoggingTask.cs centraliza todos os logs do projeto
+- Separação automática: logs de sucesso vs. logs de falha
+- Tracking completo das operações de scraping do Adrenaline.com.br
+- Debug de problemas em NavigationTask, ExtractionTask e MigrationTask
+- Logs estruturados com contexto (URL, timestamp, dados extraídos)
 
-**Serilog** é uma biblioteca de logging estruturado para .NET que permite registrar eventos de forma organizada e pesquisável, separando logs de sucesso e falha automaticamente.
+**Posição no fluxo:** Etapa 5 de 17 - implementar ANTES das Tasks porque todas usarão logging
 
-### ✅ Vantagens
-- Logging estruturado e pesquisável
-- Separação automática de sucesso/falha
-- Múltiplos destinos (console, arquivo)
-- Performance excelente
-- Integração com `Config.cs`
+## Como Instalar
 
----
+### 1. Instalar Pacotes NuGet
 
-## Instalação
+```powershell
+# Navegar até o projeto
+cd C:\Users\lucas\OneDrive\Documentos\CsharpProjects\AdrenalineSpy
 
-### Pacotes Necessários
-
-```bash
-# Serilog Core
+# Pacotes essenciais do Serilog
 dotnet add package Serilog
-
-# Sinks (destinos dos logs)
-dotnet add package Serilog.Sinks.Console
+dotnet add package Serilog.AspNetCore
 dotnet add package Serilog.Sinks.File
+dotnet add package Serilog.Sinks.Console
+dotnet add package Serilog.Settings.Configuration
+dotnet add package Serilog.Expressions
 
-# Enriquecedores básicos (para nome da máquina, etc)
-dotnet add package Serilog.Enrichers.Environment
+# Verificar instalação
+dotnet list package | findstr Serilog
 ```
 
-**⚠️ Importante:** Execute os comandos na raiz do projeto
+### 2. Verificar .csproj
 
----
+Confirme que os pacotes foram adicionados ao `AdrenalineSpy.csproj`:
 
-## Configuração no Projeto
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
 
-### Passo 1: Configurar AutomationSettings.json
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
 
-Adicione a seção `Logging` no seu arquivo de configuração:
+  <ItemGroup>
+    <PackageReference Include="Serilog" Version="4.0.2" />
+    <PackageReference Include="Serilog.AspNetCore" Version="8.0.3" />
+    <PackageReference Include="Serilog.Sinks.File" Version="6.0.0" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0" />
+    <PackageReference Include="Serilog.Settings.Configuration" Version="8.0.4" />
+    <PackageReference Include="Serilog.Expressions" Version="5.0.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
+</Project>
+```
+
+## Implementar no AutomationSettings.json
+
+A seção `Logging` no JSON já está configurada corretamente:
 
 ```json
 {
@@ -60,11 +76,51 @@ Adicione a seção `Logging` no seu arquivo de configuração:
 }
 ```
 
-**Níveis disponíveis:** `Verbose`, `Debug`, `Information`, `Warning`, `Error`, `Fatal`
+**Explicação das configurações:**
 
----
+- **`DiretorioLogs`**: Pasta onde serão salvos os arquivos de log
+- **`NivelMinimo`**: Nível mínimo de log a ser registrado
+  - `Verbose` → `Debug` → `Information` → `Warning` → `Error` → `Fatal`
+- **`ArquivoSucesso`**: Template para logs de operações bem-sucedidas
+- **`ArquivoFalha`**: Template para logs de erros e exceções
+- **`{Date}`**: Placeholder que será substituído pela data atual (YYYY-MM-DD)
 
-### Passo 2: Criar LoggingTask.cs
+**Estrutura de pastas resultante:**
+```
+logs/
+├── sucesso/
+│   ├── log-2024-11-01.txt
+│   ├── log-2024-11-02.txt
+│   └── ...
+└── falha/
+    ├── log-2024-11-01.txt
+    ├── log-2024-11-02.txt
+    └── ...
+```
+
+## Implementar no Config.cs
+
+A classe `LoggingConfig` já está implementada no `Config.cs`:
+
+```csharp
+public class LoggingConfig
+{
+    public string DiretorioLogs { get; set; } = "logs";
+    public string NivelMinimo { get; set; } = "Information";
+    public string ArquivoSucesso { get; set; } = "sucesso/log-{Date}.txt";
+    public string ArquivoFalha { get; set; } = "falha/log-{Date}.txt";
+}
+```
+
+A configuração é acessada através do singleton:
+```csharp
+var config = Config.Instancia;
+var loggingConfig = config.Logging;
+```
+
+## Montar nas Tasks
+
+### 1. Criar LoggingTask.cs
 
 Crie o arquivo `Workflow/Tasks/LoggingTask.cs`:
 
@@ -74,16 +130,10 @@ using Serilog.Events;
 
 namespace AdrenalineSpy;
 
-/// <summary>
-/// Helper centralizado para logging usando Serilog
-/// </summary>
 public static class LoggingTask
 {
     private static bool _configurado = false;
-
-    /// <summary>
-    /// Configura o Serilog (chamar UMA VEZ no início)
-    /// </summary>
+    
     public static void ConfigurarLogger()
     {
         if (_configurado)
@@ -95,8 +145,6 @@ public static class LoggingTask
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Is(ParseNivel(config.Logging.NivelMinimo))
             .Enrich.FromLogContext()
-            .Enrich.WithMachineName()
-            .Enrich.WithProperty("Aplicacao", "AdrenalineSpy")
             .WriteTo.Console(
                 outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
             // Logs de sucesso
@@ -159,282 +207,277 @@ public static class LoggingTask
 }
 ```
 
----
+### 2. Integrar no Program.cs
 
-### Passo 3: Estrutura de Diretórios
-
-Crie as pastas para os logs (ou deixe o Serilog criar automaticamente):
-
-```
-logs/
-├── .gitkeep
-├── sucesso/
-│   └── .gitkeep
-└── falha/
-    └── .gitkeep
-```
-
-**⚠️ Importante:** Adicione `/logs/` ao `.gitignore`:
-
-```gitignore
-# Logs
-logs/*.log
-logs/*.txt
-logs/sucesso/*.log
-logs/sucesso/*.txt
-logs/falha/*.log
-logs/falha/*.txt
-```
-
----
-
-## Uso no Código
-
-### Em Program.cs
+Modifique o `Program.cs` para inicializar o logging:
 
 ```csharp
-using AdrenalineSpy;
+namespace AdrenalineSpy;
 
-namespace AdrenalineSpy
+class Program
 {
-    class Program
+    static async Task Main(string[] args)
     {
-        static void Main(string[] args)
+        try
         {
-            // 1. Carregar configurações
-            Config config = Config.Instancia;
-            
+            // Inicializar logging PRIMEIRO
+            LoggingTask.ConfigurarLogger();
+            LoggingTask.RegistrarInfo("=== AdrenalineSpy RPA Iniciado ===");
+
+            // Carregar configurações
+            var config = Config.Instancia;
             if (!config.Validar())
             {
-                Console.WriteLine("❌ Configurações inválidas!");
+                LoggingTask.RegistrarErro(new Exception("Configurações inválidas"), "Program");
                 return;
             }
 
-            // 2. Configurar logger
-            LoggingTask.ConfigurarLogger();
+            LoggingTask.RegistrarInfo($"Configurações carregadas - URL: {config.Navegacao.UrlBase}, Categorias: {config.Categorias.Count}");
 
-            try
-            {
-                // 3. Usar logging
-                LoggingTask.RegistrarInfo("=== Aplicação Iniciada ===");
-                
-                // Seu código aqui...
-                
-                LoggingTask.RegistrarInfo("=== Aplicação Finalizada ===");
-            }
-            catch (Exception ex)
-            {
-                LoggingTask.RegistrarErro(ex, "Program.Main");
-            }
-            finally
-            {
-                // 4. SEMPRE fechar
-                LoggingTask.FecharLogger();
-            }
+            // Aqui virão as outras Tasks (NavigationTask, ExtractionTask, etc.)
+            LoggingTask.RegistrarInfo("Iniciando workflow de scraping...");
+            
+            // TODO: Implementar Workflow.cs
+            
+            LoggingTask.RegistrarInfo("=== AdrenalineSpy RPA Finalizado com Sucesso ===");
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro(ex, "Program - Erro Fatal");
+            Console.WriteLine($"❌ Erro fatal: {ex.Message}");
+        }
+        finally
+        {
+            // Finalizar logging
+            LoggingTask.FecharLogger();
         }
     }
 }
 ```
 
-### Em Tasks (NavigationTask, ExtractionTask, etc)
+### 3. Padrão de Uso nas Outras Tasks
 
+**NavigationTask.cs (exemplo):**
 ```csharp
-namespace AdrenalineSpy;
+namespace AdrenalineSpy.Workflow.Tasks;
 
 public class NavigationTask
 {
-    public void Navegar()
+    public async Task<List<string>> ObterUrlsCategoria(string categoria)
     {
         try
         {
-            LoggingTask.RegistrarInfo("Iniciando navegação...");
+            LoggingTask.RegistrarInfo($"Iniciando navegação na categoria: {categoria}");
             
-            // Código de navegação...
+            var config = Config.Instancia;
+            var urlCategoria = config.Navegacao.UrlBase + config.Categorias[categoria];
             
-            LoggingTask.RegistrarInfo("Navegação concluída!");
+            LoggingTask.RegistrarInfo($"Abrindo página: {urlCategoria}");
+            
+            // ... lógica do Playwright ...
+            
+            var urls = new List<string>(); // URLs extraídas
+            
+            LoggingTask.RegistrarInfo($"Navegação concluída - {urls.Count} URLs encontradas na categoria {categoria}");
+            
+            return urls;
         }
         catch (Exception ex)
         {
-            LoggingTask.RegistrarErro(ex, "NavigationTask.Navegar");
+            LoggingTask.RegistrarErro(ex, $"NavigationTask - Categoria: {categoria}");
             throw;
         }
     }
 }
 ```
 
----
-
-## Níveis de Log
-
-### Quando Usar Cada Nível
-
+**ExtractionTask.cs (exemplo):**
 ```csharp
-// Verbose - Detalhes técnicos (raramente usado)
-LoggingTask.RegistrarDebug("Valor da variável X: 42");
+namespace AdrenalineSpy.Workflow.Tasks;
 
-// Debug - Informações de desenvolvimento
-LoggingTask.RegistrarDebug("Processando item 5 de 10");
-
-// Information - Fluxo normal da aplicação ✅ MAIS USADO
-LoggingTask.RegistrarInfo("Usuário logou no sistema");
-LoggingTask.RegistrarInfo("Processamento concluído");
-
-// Warning - Algo estranho mas não é erro
-LoggingTask.RegistrarAviso("Tentativa 2 de 3 falhou", "ProcessarItem");
-
-// Error - Erros recuperáveis ✅ IMPORTANTE
-try
+public class ExtractionTask
 {
-    // código
-}
-catch (Exception ex)
-{
-    LoggingTask.RegistrarErro(ex, "NomeDaFuncao");
-}
-
-// Fatal - Erros críticos que param tudo
-LoggingTask.RegistrarFatal(ex, "Program.Main");
-```
-
-### Estrutura dos Logs Gerados
-
-**Console:**
-```
-[14:30:15 INF] ✅ Logger configurado com sucesso!
-[14:30:15 INF] === Aplicação Iniciada ===
-[14:30:16 WRN] [ProcessarItem] Tentativa falhou
-[14:30:17 ERR] [NavigationTask] Erro: Timeout na navegação
-```
-
-**Arquivo `logs/sucesso/log-01-11-2025-14-30.txt`:**
-```
-2025-11-01 14:30:15 [INF] ✅ Logger configurado com sucesso!
-2025-11-01 14:30:15 [INF] === Aplicação Iniciada ===
-2025-11-01 14:30:20 [INF] === Aplicação Finalizada ===
-```
-
-**Arquivo `logs/falha/log-01-11-2025-14-30.txt`:**
-```
-2025-11-01 14:30:16 [WRN] [ProcessarItem] Tentativa falhou
-2025-11-01 14:30:17 [ERR] [NavigationTask] Erro: Timeout na navegação
-System.TimeoutException: A operação expirou...
-```
-
----
-
-## Enriquecimento Avançado (Opcional)
-
-Se você quiser adicionar mais informações aos logs, pode enriquecer o `LoggingTask.cs`:
-
-### Adicionar Thread ID
-
-```csharp
-// No ConfigurarLogger(), adicione:
-.Enrich.WithThreadId()
-```
-
-### Adicionar Propriedades Customizadas
-
-```csharp
-.Enrich.WithProperty("Versao", "1.0.0")
-.Enrich.WithProperty("Ambiente", "Producao")
-```
-
-### LogContext (Propriedades Dinâmicas)
-
-```csharp
-using Serilog.Context;
-
-public void ProcessarItem(int itemId)
-{
-    using (LogContext.PushProperty("ItemId", itemId))
+    public async Task<NoticiaModel> ExtrairDados(string url)
     {
-        LoggingTask.RegistrarInfo("Processando item");
-        // Todos os logs terão ItemId automaticamente
+        try
+        {
+            LoggingTask.RegistrarInfo($"Iniciando extração de dados da URL: {url}");
+            
+            // ... lógica de extração ...
+            
+            var noticia = new NoticiaModel(); // Dados extraídos
+            
+            LoggingTask.RegistrarInfo($"Extração concluída - Título: {noticia.Titulo}, Categoria: {noticia.Categoria}");
+            
+            return noticia;
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro(ex, $"ExtractionTask - URL: {url}");
+            throw;
+        }
     }
 }
 ```
 
-### Rolling por Tamanho
+## Métodos Mais Usados
 
-Limitar tamanho dos arquivos:
+### Logging Básico
 
 ```csharp
-.WriteTo.File(
-    path: "logs/app.log",
-    rollingInterval: RollingInterval.Day,
-    retainedFileCountLimit: 30,  // Manter últimos 30 dias
-    fileSizeLimitBytes: 10 * 1024 * 1024  // 10 MB por arquivo
-)
+// Inicializar (fazer uma vez no Program.cs)
+LoggingTask.ConfigurarLogger();
+
+// Log de informação (vai para logs/sucesso/)
+LoggingTask.RegistrarInfo("Operação realizada com sucesso");
+LoggingTask.RegistrarInfo("Processando categoria Games");
+LoggingTask.RegistrarInfo($"Configurações carregadas - Timeout: {timeout}s");
+
+// Log de aviso (vai para logs/falha/)
+LoggingTask.RegistrarAviso("Timeout detectado - tentando novamente", "NavigationTask");
+LoggingTask.RegistrarAviso("Rate limit atingido", "Scraping");
+
+// Log de erro (vai para logs/falha/)
+LoggingTask.RegistrarErro(exception, "DatabaseConnection");
+LoggingTask.RegistrarErro(playwrightException, $"Playwright - URL: {url}");
+
+// Log de debug (só aparece se NivelMinimo = "Debug")
+LoggingTask.RegistrarDebug("Estado detalhado do navegador");
 ```
 
-### Filtros Personalizados
+### Padrão Try-Catch com Logging
 
 ```csharp
-// Logar apenas erros específicos
-.WriteTo.Logger(lc => lc
-    .Filter.ByIncludingOnly(evt => 
-        evt.Exception != null && 
-        evt.Exception.GetType() == typeof(TimeoutException))
-    .WriteTo.File("logs/timeouts.log"))
-```
-
-### Templates de Output Customizados
-
-```csharp
-// Mais detalhado
-outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] [{MachineName}] {Message:lj}{NewLine}{Exception}"
-
-// Com propriedades
-outputTemplate: "[{Timestamp:HH:mm:ss} {Level}] {Message} {Properties:j}{NewLine}{Exception}"
-```
-
----
-
-## Boas Práticas
-
-### ✅ Fazer
-
-```csharp
-// Usar logging estruturado
-LoggingTask.RegistrarInfo("Processado pedido ID: {0}", pedidoId);
-
-// Logar no catch
-try { }
-catch (Exception ex) 
-{ 
-    LoggingTask.RegistrarErro(ex, "Contexto"); 
-}
-
-// Sempre fechar no finally
-finally 
-{ 
-    LoggingTask.FecharLogger(); 
+public async Task MinhaOperacao(string parametro)
+{
+    try
+    {
+        LoggingTask.RegistrarInfo($"Iniciando operação com parâmetro: {parametro}");
+        
+        // ... sua lógica aqui ...
+        
+        LoggingTask.RegistrarInfo($"Operação concluída com sucesso - Parâmetro: {parametro}");
+    }
+    catch (TimeoutException ex)
+    {
+        LoggingTask.RegistrarAviso("Timeout na operação - será reexecutada", $"Parametro: {parametro}");
+        // ... lógica de retry ...
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, $"MinhaOperacao - Parametro: {parametro}");
+        throw; // Re-throw para não mascarar o erro
+    }
 }
 ```
 
-### ❌ Evitar
+### Logging de Performance
 
 ```csharp
-// String interpolation (perde estrutura)
-LoggingTask.RegistrarInfo($"Processado pedido {pedidoId}");
+public async Task OperacaoComTempo()
+{
+    var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+    
+    try
+    {
+        LoggingTask.RegistrarInfo("Iniciando operação longa");
+        
+        // ... operação demorada ...
+        
+        stopwatch.Stop();
+        LoggingTask.RegistrarInfo($"Operação concluída em {stopwatch.ElapsedMilliseconds}ms");
+    }
+    catch (Exception ex)
+    {
+        stopwatch.Stop();
+        LoggingTask.RegistrarErro(ex, $"OperacaoComTempo - Falha após {stopwatch.ElapsedMilliseconds}ms");
+        throw;
+    }
+}
+```
 
-// Logar dados sensíveis
-LoggingTask.RegistrarInfo($"Senha: {senha}");  // ❌ NUNCA!
+### Logging Estruturado para Scraping
 
-// Esquecer de fechar
-// Sem Log.CloseAndFlush() = logs podem se perder
+```csharp
+// Log de início de categoria
+var categoria = "games";
+var urlBase = "https://www.adrenaline.com.br/games/";
+LoggingTask.RegistrarInfo($"Iniciando scraping - Categoria: {categoria}, URL: {urlBase}");
+
+// Log de progresso
+var urlsProcessadas = 15;
+var urlsTotal = 50;
+var porcentagem = (urlsProcessadas / (double)urlsTotal) * 100;
+LoggingTask.RegistrarInfo($"Progresso: {urlsProcessadas}/{urlsTotal} URLs ({porcentagem:F1}%)");
+
+// Log de resultado final
+var noticiasExtraidas = 45;
+var noticiasNovas = 12;
+var tempoTotal = 120;
+LoggingTask.RegistrarInfo($"Scraping finalizado - {noticiasExtraidas} extraídas, {noticiasNovas} novas, {tempoTotal}s");
+```
+
+### Debugging e Troubleshooting
+
+```csharp
+// Para debug detalhado (só aparece se NivelMinimo = "Debug" no JSON)
+LoggingTask.RegistrarDebug($"Estado do navegador - Página carregada: {true}, URL: {page.Url}, Elementos: {elementos.Count}");
+
+// Para acompanhar erros específicos do Playwright
+try
+{
+    await page.ClickAsync("button");
+}
+catch (PlaywrightException ex) when (ex.Message.Contains("timeout"))
+{
+    var timeout = Config.Instancia.Navegacao.TimeoutSegundos;
+    LoggingTask.RegistrarAviso("Timeout no click - elemento pode não estar visível", $"Selector: button, Timeout: {timeout}s");
+}
+
+// Para tracking de dados extraídos
+LoggingTask.RegistrarInfo($"Dados extraídos - Título: {noticia.Titulo}, Categoria: {noticia.Categoria}, Tamanho: {noticia.Conteudo?.Length ?? 0} chars");
+```
+
+### Finalização Correta
+
+```csharp
+// No final do Program.cs (dentro do finally)
+try
+{
+    LoggingTask.RegistrarInfo("Finalizando aplicação...");
+    
+    // ... cleanup de recursos ...
+    
+    LoggingTask.RegistrarInfo("Aplicação finalizada corretamente");
+}
+finally
+{
+    // SEMPRE finalizar para liberar recursos
+    LoggingTask.FecharLogger();
+}
 ```
 
 ---
 
-## Recursos Adicionais
+## 💡 Resumo para AdrenalineSpy
 
-- **Site Oficial:** https://serilog.net/
-- **GitHub:** https://github.com/serilog/serilog
-- **Sinks Disponíveis:** https://github.com/serilog/serilog/wiki/Provided-Sinks
+**Setup único (fazer uma vez):**
+1. `dotnet add package` dos 6 pacotes Serilog
+2. Seção `Logging` no `AutomationSettings.json` (já existe)
+3. Classe `LoggingConfig` no `Config.cs` (já existe)
+4. Criar `LoggingTask.cs` (código fornecido acima)
+5. Inicializar no `Program.cs` com `LoggingTask.ConfigurarLogger()`
 
----
+**Uso em todas as Tasks:**
+- `LoggingTask.RegistrarInfo()` → operações normais e sucessos
+- `LoggingTask.RegistrarAviso()` → avisos (com contexto)
+- `LoggingTask.RegistrarErro()` → erros em try/catch (com Exception)
+- `LoggingTask.RegistrarDebug()` → debug detalhado
 
-**Versão:** 2.0 (Simplificado)  
-**Última atualização:** Novembro 2025
+**Resultado:** 
+- Logs automáticos separados: `logs/sucesso/` e `logs/falha/`
+- Debug fácil quando o scraping falhar
+- Histórico completo de todas as operações
+- Logs estruturados com JSON para análise posterior
+
+**Próxima etapa:** Implementar Playwright (que usará LoggingTask extensivamente)! 🚀
