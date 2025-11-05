@@ -95,7 +95,8 @@ ls AutomationSettings.json
     "ViewportHeight": 1080,
     "UserAgent": "",
     "BloquearImagens": true,
-    "BloquearCSS": false
+    "BloquearCSS": false,
+    "JanelaMaximizada": true
   },
   "Categorias": {
     "Tecnologia": "/tecnologia/",
@@ -321,6 +322,7 @@ public class NavegacaoConfig
     public string UserAgent { get; set; } = string.Empty;
     public bool BloquearImagens { get; set; } = false;
     public bool BloquearCSS { get; set; } = false;
+    public bool JanelaMaximizada { get; set; } = true;
 }
 
 public class ScrapingConfig
@@ -373,172 +375,34 @@ public class ExportacaoConfig
 ```csharp
 using AdrenalineSpy;
 
-// Carregar configurações no início da aplicação
-try
+namespace AdrenalineSpy
 {
-    var config = Config.Instancia; // Carrega automaticamente o JSON
-    
-    if (!config.Validar())
+    class Program
     {
-        Console.WriteLine("❌ Configuração inválida. Verifique AutomationSettings.json");
-        return;
-    }
-    
-    Console.WriteLine($"🎯 Scraping configurado para: {config.Navegacao.UrlBase}");
-    Console.WriteLine($"🗂️ Categorias: {string.Join(", ", config.Categorias.Keys)}");
-}
-catch (Exception ex)
-{
-    Console.WriteLine($"💥 Erro fatal na configuração: {ex.Message}");
-    return;
-}
-
-// Executar workflow com configurações carregadas...
-```
-
-### 2. NavigationTask.cs - Usar Config.Navegacao
-
-```csharp
-using Microsoft.Playwright;
-using AdrenalineSpy;
-using AdrenalineSpy.Workflow.Tasks;
-
-namespace AdrenalineSpy.Workflow.Tasks;
-
-public class NavigationTask
-{
-    private IBrowser? _browser;
-    private IPage? _pagina;
-
-    public async Task<IBrowser> InicializarNavegador()
-    {
-        try
+        static void Main(string[] args)
         {
-            // Usar configurações do JSON via Config.Instancia
-            var config = Config.Instancia.Navegacao;
-            
-            var playwright = await Microsoft.Playwright.Playwright.CreateAsync();
-            
-            var opcoes = new BrowserTypeLaunchOptions
+
+            // Carregar configurações no início da aplicação
+            try
             {
-                Headless = config.HeadlessMode,
-                Timeout = config.TimeoutSegundos * 1000 // Converter para ms
-            };
+                var config = Config.Instancia; // Carrega automaticamente o JSON
 
-            _browser = config.NavegadorPadrao.ToLower() switch
+                if (!config.Validar())
+                {
+                    Console.WriteLine("❌ Configuração inválida. Verifique AutomationSettings.json");
+                    return;
+                }
+
+                Console.WriteLine($"🎯 Scraping configurado para: {config.Navegacao.UrlBase}");
+                Console.WriteLine($"🗂️ Categorias: {string.Join(", ", config.Categorias.Keys)}");
+            }
+            catch (Exception ex)
             {
-                "chromium" => await playwright.Chromium.LaunchAsync(opcoes),
-                "firefox" => await playwright.Firefox.LaunchAsync(opcoes),
-                "webkit" => await playwright.Webkit.LaunchAsync(opcoes),
-                _ => await playwright.Chromium.LaunchAsync(opcoes)
-            };
-
-            LoggingTask.RegistrarInfo($"✅ Navegador {config.NavegadorPadrao} inicializado");
-            return _browser;
-        }
-        catch (Exception ex)
-        {
-            LoggingTask.RegistrarErro(ex, "NavigationTask.InicializarNavegador");
-            throw;
-        }
-    }
-
-    public async Task<IPage> CriarPagina()
-    {
-        try
-        {
-            if (_browser == null)
-                throw new InvalidOperationException("Browser não inicializado");
-
-            var config = Config.Instancia.Navegacao;
-            
-            _pagina = await _browser.NewPageAsync(new BrowserNewPageOptions
-            {
-                ViewportSize = new ViewportSize 
-                { 
-                    Width = config.ViewportWidth, 
-                    Height = config.ViewportHeight 
-                },
-                UserAgent = string.IsNullOrWhiteSpace(config.UserAgent) ? null : config.UserAgent
-            });
-
-            // Otimizações de performance baseadas no config
-            if (config.BloquearImagens)
-            {
-                await _pagina.RouteAsync("**/*.{png,jpg,jpeg,gif,webp,svg}", route => route.AbortAsync());
+                Console.WriteLine($"💥 Erro fatal na configuração: {ex.Message}");
+                return;
             }
 
-            if (config.BloquearCSS)
-            {
-                await _pagina.RouteAsync("**/*.css", route => route.AbortAsync());
-            }
-
-            LoggingTask.RegistrarInfo($"✅ Página criada - Viewport: {config.ViewportWidth}x{config.ViewportHeight}");
-            return _pagina;
-        }
-        catch (Exception ex)
-        {
-            LoggingTask.RegistrarErro(ex, "NavigationTask.CriarPagina");
-            throw;
-        }
-    }
-
-    public async Task<IPage> NavegarPara(string url)
-    {
-        try
-        {
-            if (_pagina == null)
-                throw new InvalidOperationException("Página não criada");
-
-            var config = Config.Instancia.Navegacao;
-            
-            await _pagina.GotoAsync(url, new PageGotoOptions
-            {
-                Timeout = config.TimeoutSegundos * 1000,
-                WaitUntil = WaitUntilState.Load
-            });
-
-            LoggingTask.RegistrarInfo($"✅ Navegou para: {url}");
-            return _pagina;
-        }
-        catch (Exception ex)
-        {
-            LoggingTask.RegistrarErro(ex, $"NavigationTask.NavegarPara - URL: {url}");
-            throw;
-        }
-    }
-}
-```
-
-### 3. MigrationTask.cs - Usar Config.Database
-
-```csharp
-using System.Data;
-using MySql.Data.MySqlClient;
-using AdrenalineSpy;
-using AdrenalineSpy.Workflow.Tasks;
-
-namespace AdrenalineSpy.Workflow.Tasks;
-
-public class MigrationTask
-{
-    public async Task<IDbConnection> ObterConexao()
-    {
-        try
-        {
-            // Connection string vem das configurações
-            string connectionString = Config.Instancia.ObterConnectionString();
-            
-            var conexao = new MySqlConnection(connectionString);
-            await conexao.OpenAsync();
-            
-            LoggingTask.RegistrarInfo("✅ Conexão com banco estabelecida");
-            return conexao;
-        }
-        catch (Exception ex)
-        {
-            LoggingTask.RegistrarErro(ex, "MigrationTask.ObterConexao");
-            throw;
+            // Executar workflow com configurações carregadas...
         }
     }
 }
@@ -577,6 +441,9 @@ int timeoutMs = nav.TimeoutSegundos * 1000;  // Converter para millisegundos
 // Otimizações (acelerar scraping)
 bool bloquearImagens = nav.BloquearImagens;   // true = mais rápido
 bool bloquearCSS = nav.BloquearCSS;           // true = quebra layout
+
+// Janela maximizada (usando atalho Windows)
+bool janelaMaximizada = nav.JanelaMaximizada; // true = usar Win+↑ para maximizar
 
 // URL base para construir URLs relativas
 string urlCompleta = $"{nav.UrlBase}{Config.Instancia.Categorias["Games"]}";

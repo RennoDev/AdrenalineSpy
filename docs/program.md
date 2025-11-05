@@ -33,36 +33,28 @@ namespace AdrenalineSpy
     {
         static void Main(string[] args)
         {
-            // 1. Carregar configurações
-            Config config = Config.Instancia;
 
-            if (!config.Validar())
-            {
-                Console.WriteLine("❌ Configurações inválidas!");
-                return;
-            }
-
-            // 2. Configurar logger
-            LoggingTask.ConfigurarLogger();
-
+            // Carregar configurações no início da aplicação
             try
             {
-                // 3. Usar logging
-                LoggingTask.RegistrarInfo("=== Aplicação Iniciada ===");
+                var config = Config.Instancia; // Carrega automaticamente o JSON
 
-                // Seu código aqui...
+                if (!config.Validar())
+                {
+                    Console.WriteLine("❌ Configuração inválida. Verifique AutomationSettings.json");
+                    return;
+                }
 
-                LoggingTask.RegistrarInfo("=== Aplicação Finalizada ===");
+                Console.WriteLine($"🎯 Scraping configurado para: {config.Navegacao.UrlBase}");
+                Console.WriteLine($"🗂️ Categorias: {string.Join(", ", config.Categorias.Keys)}");
             }
             catch (Exception ex)
             {
-                LoggingTask.RegistrarErro(ex, "Program.Main");
+                Console.WriteLine($"💥 Erro fatal na configuração: {ex.Message}");
+                return;
             }
-            finally
-            {
-                // 4. SEMPRE fechar
-                LoggingTask.FecharLogger();
-            }
+
+            // Executar workflow com configurações carregadas...
         }
     }
 }

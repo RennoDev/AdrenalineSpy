@@ -82,7 +82,8 @@ Use a seção `Navegacao` existente, enriquecendo conforme necessário:
     "ViewportHeight": 1080,
     "UserAgent": "",
     "BloquearImagens": true,
-    "BloquearCSS": false
+    "BloquearCSS": false,
+    "JanelaMaximizada": true
   }
 }
 ```
@@ -93,10 +94,11 @@ Use a seção `Navegacao` existente, enriquecendo conforme necessário:
 - `TimeoutSegundos` - Timeout padrão para todas as operações (30s recomendado)
 - `HeadlessMode` - `false` = visível (debug), `true` = invisível (produção)
 - `NavegadorPadrao` - `"chromium"`, `"firefox"` ou `"webkit"`
-- `ViewportWidth/Height` - Resolução da janela do navegador
+- `ViewportWidth/Height` - Resolução da janela do navegador (ignorado se JanelaMaximizada = true)
 - `UserAgent` - String personalizada do user-agent (vazio = padrão)
 - `BloquearImagens` - Acelera scraping bloqueando imagens
 - `BloquearCSS` - Bloquear CSS (pode quebrar layout mas é mais rápido)
+- `JanelaMaximizada` - `true` = janela maximizada (modo debug), `false` = usar ViewportWidth/Height
 
 ---
 
@@ -118,7 +120,13 @@ public class NavegacaoConfig
     public string UserAgent { get; set; } = string.Empty;
     public bool BloquearImagens { get; set; } = false;
     public bool BloquearCSS { get; set; } = false;
+    public bool JanelaMaximizada { get; set; } = true;
 }
+
+**💡 Dica sobre JanelaMaximizada:**
+- Se `JanelaMaximizada = true`, usa atalho **Win + ↑** para maximizar janela automaticamente
+- Funciona apenas em modo **não-headless** (HeadlessMode = false)
+- **Recomendado:** true para desenvolvimento visual, false para automação em produção
 ```
 
 ### Playwright.cs (Classe Dedicada)
@@ -147,7 +155,7 @@ public static class Playwright
     /// <summary>
     /// Inicializa o Playwright e navegador usando configurações do Config
     /// </summary>
-    public static async IBrowser InicializarNavegador()
+    public static async Task<IBrowser> InicializarNavegador()
     {
         if (_browser != null)
             return _browser; // Reutilizar se já existe
@@ -187,19 +195,19 @@ public static class Playwright
     /// <summary>
     /// Criar nova página com todas as configurações personalizadas aplicadas
     /// </summary>
-    public static async IPage CriarPagina()
+    public static async Task<IPage> CriarPagina()
     {
         var browser = await InicializarNavegador();
 
         var context = await browser.NewContextAsync(new BrowserNewContextOptions
         {
-            ViewportSize = new ViewportSize 
-            { 
-                Width = _config.Navegacao.ViewportWidth, 
-                Height = _config.Navegacao.ViewportHeight 
+            ViewportSize = new ViewportSize
+            {
+                Width = _config.Navegacao.ViewportWidth,
+                Height = _config.Navegacao.ViewportHeight
             },
-            UserAgent = string.IsNullOrEmpty(_config.Navegacao.UserAgent) 
-                ? null 
+            UserAgent = string.IsNullOrEmpty(_config.Navegacao.UserAgent)
+                ? null
                 : _config.Navegacao.UserAgent
         });
 
@@ -207,9 +215,15 @@ public static class Playwright
         await ConfigurarBloqueiosRecursos(context);
 
         var page = await context.NewPageAsync();
-        
+
         // Configurar timeout padrão para todas as operações
         page.SetDefaultTimeout(_config.Navegacao.TimeoutSegundos * 1000);
+
+        // Log da configuração de janela
+        if (_config.Navegacao.JanelaMaximizada && !_config.Navegacao.HeadlessMode)
+        {
+            LoggingTask.RegistrarDebug("Janela configurada para usar tamanho da tela (maximizada)");
+        }
 
         return page;
     }
@@ -217,7 +231,7 @@ public static class Playwright
     /// <summary>
     /// Configurar bloqueios de recursos (imagens, CSS) para acelerar scraping
     /// </summary>
-    private static async ConfigurarBloqueiosRecursos(IBrowserContext context)
+    private static async Task ConfigurarBloqueiosRecursos(IBrowserContext context)
     {
         if (!_config.Navegacao.BloquearImagens && !_config.Navegacao.BloquearCSS)
             return;
@@ -241,7 +255,7 @@ public static class Playwright
     /// <summary>
     /// Navegar para URL com configurações otimizadas
     /// </summary>
-    public static async NavegarPara(IPage page, string url)
+    public static async Task NavegarPara(IPage page, string url)
     {
         try
         {
@@ -263,9 +277,63 @@ public static class Playwright
     }
 
     /// <summary>
+    /// Maximizar janela do navegador usando atalho Windows (Win + ↑)
+    /// </summary>
+    public static async Task MaximizarJanela(IPage page)
+    {
+        if (_config.Navegacao.HeadlessMode)
+        {
+            LoggingTask.RegistrarInfo("⚠️ Não é possível maximizar janela em modo headless");
+            return;
+        }
+
+        if (!_config.Navegacao.JanelaMaximizada)
+        {
+            LoggingTask.RegistrarDebug("Maximização de janela desabilitada na configuração");
+            return;
+        }
+
+        try
+        {
+            // Aguardar um pouco para garantir que a janela foi criada e está ativa
+            await Task.Delay(800);
+
+            // Usar P/Invoke para enviar Win + Up Arrow (maximizar janela ativa)
+            LoggingTask.RegistrarInfo("🔲 Maximizando janela com Win + ↑");
+            
+            // Importar funções Win32
+            const int VK_LWIN = 0x5B;      // Tecla Windows esquerda
+            const int VK_UP = 0x26;        // Seta para cima
+            const int KEYEVENTF_KEYUP = 0x02;
+
+            // Simular pressionar Win + Up Arrow
+            keybd_event(VK_LWIN, 0, 0, 0);
+            await Task.Delay(50);
+            keybd_event(VK_UP, 0, 0, 0);
+            await Task.Delay(50);
+            keybd_event(VK_UP, 0, KEYEVENTF_KEYUP, 0);
+            await Task.Delay(50);
+            keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0);
+
+            LoggingTask.RegistrarInfo("✅ Janela maximizada usando atalho do Windows");
+            
+            // Aguardar para a janela se ajustar
+            await Task.Delay(500);
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro(ex, "Erro ao maximizar janela do navegador");
+        }
+    }
+
+    // Importar função Windows API para simulação de teclas
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern void keybd_event(byte bVk, byte bScan, int dwFlags, int dwExtraInfo);
+
+    /// <summary>
     /// Finalizar e fechar todos os recursos do Playwright
     /// </summary>
-    public static async Finalizar()
+    public static async Task Finalizar()
     {
         try
         {
@@ -347,43 +415,30 @@ public class NavigationGoogle
         {
             LoggingTask.RegistrarInfo("Iniciando pesquisa no Google...");
 
-            // Criar página usando nossa classe Playwright
+            // Criar página usando nossa classe Playwright e Navegar para o Google
             var page = await Playwright.CriarPagina();
+            await Playwright.NavegarPara(page, "https://www.google.com.br");
 
-            // Navegar para o Google
-            await Playwright.NavegarPara(page, "https://www.google.com");
-
-            // Aguardar campo de pesquisa aparecer
-            await page.WaitForSelectorAsync("input[name='q']", new PageWaitForSelectorOptions
+            // Aguardar campo de pesquisa aparecer (usando name='q' que é mais estável)
+            await page.WaitForSelectorAsync("textarea[name='q']", new PageWaitForSelectorOptions
             {
                 Timeout = 10000
             });
 
-            // Localizar campo de pesquisa (seletor do Google)
-            var campoPesquisa = page.Locator("input[name='q']");
+            // Capturar elemento e digitar com delay aleatório
+            var campoPesquisa = page.Locator("textarea[name='q'], input[name='q']");
 
-            // Escrever "playwright" no campo
-            await campoPesquisa.FillAsync("playwright");
-            LoggingTask.RegistrarInfo("✅ Texto 'playwright' digitado no campo de pesquisa");
+            // Usar FillAsync (método recomendado pelo Playwright)
+            await campoPesquisa.FillAsync("playwright RPA automation");
+            LoggingTask.RegistrarInfo("✅ Texto preenchido com FillAsync");
 
             // Pressionar Enter para enviar a pesquisa
             await campoPesquisa.PressAsync("Enter");
             LoggingTask.RegistrarInfo("✅ Tecla Enter pressionada");
 
-            // Aguardar resultados carregarem
-            await page.WaitForSelectorAsync("#search", new PageWaitForSelectorOptions
-            {
-                Timeout = 10000
-            });
-
-            // Capturar screenshot dos resultados
-            await page.ScreenshotAsync(new PageScreenshotOptions
-            {
-                Path = "google-resultados-playwright.png",
-                FullPage = false
-            });
-
-            LoggingTask.RegistrarInfo("✅ Pesquisa concluída e screenshot salvo");
+            // Pausa para visualização manual dos resultados
+            LoggingTask.RegistrarInfo("📋 Pressione qualquer tecla para continuar e fechar o navegador");
+            Console.ReadKey();
 
             // Fechar página
             await page.Context.CloseAsync();
@@ -893,15 +948,26 @@ Após dominar a coleta de URLs, o próximo passo será implementar **ExtractionT
 
 ### 6.1. Navegação Básica
 
-```csharp
-// Navegar para uma página
-await page.GotoAsync("https://exemplo.com");
+#### Usando a Estrutura do AdrenalineSpy (RECOMENDADO)
 
-// Navegar com opções específicas
+```csharp
+// Usar a classe Playwright.cs (estrutura do projeto)
+var page = await Playwright.CriarPagina();
+await Playwright.NavegarPara(page, "https://www.adrenaline.com.br/tecnologia");
+
+// Finalizar recursos
+await page.Context.CloseAsync();
+await Playwright.Finalizar();
+```
+
+#### Métodos Diretos da Page (para casos específicos)
+
+```csharp
+// Navegar diretamente (quando não usar Playwright.NavegarPara)
 await page.GotoAsync("https://exemplo.com", new PageGotoOptions
 {
-    Timeout = 30000,
-    WaitUntil = WaitUntilState.NetworkIdle // ou DOMContentLoaded, Load
+    Timeout = _config.Navegacao.TimeoutSegundos * 1000,
+    WaitUntil = WaitUntilState.NetworkIdle
 });
 
 // Voltar e avançar no histórico
@@ -912,277 +978,843 @@ await page.GoForwardAsync();
 await page.ReloadAsync();
 ```
 
+#### Padrão Completo nas Tasks do AdrenalineSpy
+
+```csharp
+public async Task<List<string>> MinhaTask()
+{
+    try
+    {
+        LoggingTask.RegistrarInfo("Iniciando navegação...");
+        
+        var page = await Playwright.CriarPagina();
+        await Playwright.NavegarPara(page, _config.Navegacao.UrlBase + "/categoria");
+        
+        // Sua lógica aqui...
+        
+        await page.Context.CloseAsync();
+        return resultado;
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, "MinhaTask");
+        throw;
+    }
+}
+```
+
 ---
 
 ### 6.2. Como Conseguir e Configurar Seletores
 
-#### Tipos de seletores mais usados:
+#### Exemplo Prático: Seletores do Adrenaline.com.br
 
 ```csharp
-// 1. CSS Selector (mais comum)
-var elemento = page.Locator("button.submit");
-var elemento = page.Locator("#login-btn");
-var elemento = page.Locator("div.content > p:first-child");
-
-// 2. Por texto visível
-var elemento = page.Locator("text=Entrar");
-var elemento = page.Locator("text=/Login|Entrar/i"); // regex case-insensitive
-
-// 3. Por atributo data
-var elemento = page.Locator("[data-testid='submit-button']");
-var elemento = page.Locator("[data-id='123']");
-
-// 4. XPath (quando CSS não é suficiente)
-var elemento = page.Locator("xpath=//button[@type='submit' and contains(text(), 'Enviar')]");
-
-// 5. Combinação de seletores
-var elemento = page.Locator("div.form >> button.submit"); // dentro de
-var elemento = page.Locator("button:has-text('Salvar')"); // que contém texto
+public async Task<List<string>> ColetarLinksAdrenaline()
+{
+    var page = await Playwright.CriarPagina();
+    await Playwright.NavegarPara(page, _config.Navegacao.UrlBase);
+    
+    // Aguardar elementos aparecerem
+    await page.WaitForSelectorAsync("article", new PageWaitForSelectorOptions
+    {
+        Timeout = _config.Navegacao.TimeoutSegundos * 1000
+    });
+    
+    // Coletar links (AJUSTE CONFORME HTML REAL DO ADRENALINE)
+    var links = await page.Locator("article a[href*='/noticia']").AllAsync();
+    
+    var urls = new List<string>();
+    foreach (var link in links)
+    {
+        var href = await link.GetAttributeAsync("href");
+        if (!string.IsNullOrEmpty(href))
+        {
+            urls.Add(href.StartsWith("http") ? href : _config.Navegacao.UrlBase + href);
+        }
+    }
+    
+    await page.Context.CloseAsync();
+    return urls;
+}
 ```
 
-#### Como descobrir seletores no navegador:
+#### Tipos de Seletores Mais Usados no AdrenalineSpy
 
-1. Abrir DevTools (F12)
-2. Usar ferramenta de seleção (Ctrl+Shift+C)
-3. Clicar no elemento desejado
-4. Copiar seletor CSS ou criar XPath
+```csharp
+// 1. CSS Selector para artigos/notícias
+var artigos = page.Locator("article.news-item");
+var titulos = page.Locator("h1.article-title, h2.news-title");
+var links = page.Locator("a[href*='/noticia'], a[href*='/review']");
+
+// 2. Por texto visível (útil para navegação)
+var menuTecnologia = page.Locator("text=Tecnologia");
+var btnProxima = page.Locator("text=/Próxima|Next/i");
+
+// 3. Por atributo específico
+var dataId = page.Locator("[data-article-id]");
+var categoria = page.Locator("[data-category='tecnologia']");
+
+// 4. Combinação de seletores (mais específicos)
+var linksDentroDeArtigos = page.Locator("article >> a.permalink");
+var titulosComTexto = page.Locator("h2:has-text('Review')");
+```
+
+#### Como Descobrir Seletores no Adrenaline.com.br
+
+1. **Abra o site:** https://www.adrenaline.com.br
+2. **DevTools:** Pressione F12
+3. **Ferramenta de seleção:** Ctrl+Shift+C (ou clique no ícone 🔍)
+4. **Clique no elemento:** Artigo, título, link que você quer capturar
+5. **Copie o seletor:** Botão direito no HTML → Copy → Copy selector
+
+#### Exemplo de Debug de Seletores
+
+```csharp
+public async Task TestarSeletores()
+{
+    var page = await Playwright.CriarPagina();
+    await Playwright.NavegarPara(page, "https://www.adrenaline.com.br");
+    
+    // Contar elementos para verificar se seletor funciona
+    int totalArtigos = await page.Locator("article").CountAsync();
+    LoggingTask.RegistrarInfo($"Total de artigos encontrados: {totalArtigos}");
+    
+    // Se não encontrar, testar seletores alternativos
+    if (totalArtigos == 0)
+    {
+        totalArtigos = await page.Locator(".post, .news-item, .article").CountAsync();
+        LoggingTask.RegistrarInfo($"Seletores alternativos: {totalArtigos}");
+    }
+    
+    // Screenshot para debug visual
+    await page.ScreenshotAsync(new PageScreenshotOptions
+    {
+        Path = "debug-adrenaline.png",
+        FullPage = true
+    });
+    
+    await page.Context.CloseAsync();
+}
 
 ---
 
-### 6.3. Cliques em Seletores
+### 6.3. Cliques e Interações
+
+#### Padrão de Cliques no AdrenalineSpy
 
 ```csharp
-// Clique simples (com auto-wait)
-await page.Locator("button.submit").ClickAsync();
-
-// Clique com timeout personalizado
-await page.Locator("button").ClickAsync(new LocatorClickOptions
+public async Task NavegarPorCategoria(string categoria)
 {
-    Timeout = 5000 // 5 segundos
+    var page = await Playwright.CriarPagina();
+    await Playwright.NavegarPara(page, _config.Navegacao.UrlBase);
+    
+    try
+    {
+        // Aguardar menu aparecer
+        await page.WaitForSelectorAsync("nav.menu", new PageWaitForSelectorOptions
+        {
+            Timeout = _config.Navegacao.TimeoutSegundos * 1000
+        });
+        
+        // Clique no menu da categoria
+        await page.Locator($"nav.menu a:has-text('{categoria}')").ClickAsync();
+        
+        LoggingTask.RegistrarInfo($"✅ Navegou para categoria: {categoria}");
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, $"Erro ao navegar para {categoria}");
+        throw;
+    }
+    finally
+    {
+        await page.Context.CloseAsync();
+    }
+}
+```
+
+#### Tipos de Cliques com Timeout do Config
+
+```csharp
+// Clique simples usando timeout da configuração
+await page.Locator("button.load-more").ClickAsync(new LocatorClickOptions
+{
+    Timeout = _config.Navegacao.TimeoutSegundos * 1000
 });
 
-// Clique duplo
-await page.Locator("div.item").DblClickAsync();
+// Clique duplo em artigo para abrir
+await page.Locator("article.news-item").DblClickAsync();
 
-// Clique com botão direito
-await page.Locator("div").ClickAsync(new LocatorClickOptions
+// Clique com botão direito (para debug)
+await page.Locator("article").ClickAsync(new LocatorClickOptions
 {
     Button = MouseButton.Right
 });
 
-// Forçar clique (ignorar verificações)
-await page.Locator("button").ClickAsync(new LocatorClickOptions
+// Forçar clique quando elemento está parcialmente oculto
+await page.Locator("button.hidden-menu").ClickAsync(new LocatorClickOptions
 {
     Force = true
 });
 
-// Clique em coordenadas específicas do elemento
+// Clique em coordenadas específicas (raramente usado)
 await page.Locator("canvas").ClickAsync(new LocatorClickOptions
 {
     Position = new Position { X = 100, Y = 50 }
 });
 ```
 
----
-
-### 6.4. Hover + Click (Menu Dropdown)
+#### Exemplo Real: Paginação no Adrenaline
 
 ```csharp
-// Hover simples
-await page.Locator("button.menu").HoverAsync();
-
-// Hover + aguardar submenu + clicar
-await page.Locator("button.menu").HoverAsync();
-
-// Aguardar submenu ficar visível
-await page.Locator("ul.submenu").WaitForAsync(new LocatorWaitForOptions
+public async Task<List<string>> ColetarTodasPaginas(string categoria)
 {
-    State = WaitForSelectorState.Visible,
-    Timeout = 5000
-});
-
-// Clicar no item do submenu
-await page.Locator("ul.submenu li a[href='/categoria']").ClickAsync();
-
-// Versão mais robusta com try-catch
-try 
-{
-    await page.Locator("nav.menu > li.dropdown").HoverAsync();
+    var todasUrls = new List<string>();
+    var page = await Playwright.CriarPagina();
     
-    // Aguardar dropdown aparecer
-    await page.WaitForSelectorAsync("nav.menu .dropdown-menu", new PageWaitForSelectorOptions
+    try
     {
-        State = WaitForSelectorState.Visible,
-        Timeout = 3000
-    });
+        await Playwright.NavegarPara(page, $"{_config.Navegacao.UrlBase}/{categoria}");
+        
+        bool temProximaPagina = true;
+        int paginaAtual = 1;
+        
+        while (temProximaPagina && paginaAtual <= 5) // Limite de páginas
+        {
+            LoggingTask.RegistrarInfo($"Processando página {paginaAtual}...");
+            
+            // Coletar URLs da página atual
+            var urlsPagina = await ColetarUrlsPagina(page);
+            todasUrls.AddRange(urlsPagina);
+            
+            // Tentar ir para próxima página
+            try
+            {
+                await page.Locator("a.next, button.load-more").ClickAsync(new LocatorClickOptions
+                {
+                    Timeout = 5000
+                });
+                
+                // Aguardar novo conteúdo carregar
+                await Task.Delay(2000);
+                paginaAtual++;
+            }
+            catch (TimeoutException)
+            {
+                temProximaPagina = false;
+                LoggingTask.RegistrarInfo("Última página alcançada");
+            }
+        }
+    }
+    finally
+    {
+        await page.Context.CloseAsync();
+    }
     
-    await page.Locator(".dropdown-menu a:has-text('Tecnologia')").ClickAsync();
-}
-catch (TimeoutException)
-{
-    LoggingTask.RegistrarAviso("Menu dropdown não abriu no tempo esperado", "NavigationTask");
+    return todasUrls;
 }
 ```
 
 ---
 
-### 6.5. Esperas Explícitas
+### 6.4. Hover e Menus Dropdown
 
-#### Esperar elemento aparecer na tela:
+#### Padrão para Navegação por Menus no Adrenaline
 
 ```csharp
-// Esperar elemento ficar visível (mais usado)
-await page.Locator("div.resultado").WaitForAsync(new LocatorWaitForOptions
+public async Task NavegarPorMenuDropdown(string categoria)
+{
+    var page = await Playwright.CriarPagina();
+    await Playwright.NavegarPara(page, _config.Navegacao.UrlBase);
+    
+    try
+    {
+        LoggingTask.RegistrarDebug($"Navegando por menu: {categoria}");
+        
+        // Hover no menu principal
+        await page.Locator("nav.main-menu").HoverAsync();
+        
+        // Aguardar submenu aparecer
+        await page.WaitForSelectorAsync(".dropdown-menu", new PageWaitForSelectorOptions
+        {
+            State = WaitForSelectorState.Visible,
+            Timeout = _config.Navegacao.TimeoutSegundos * 1000
+        });
+        
+        // Clicar na categoria desejada
+        await page.Locator($".dropdown-menu a:has-text('{categoria}')").ClickAsync();
+        
+        LoggingTask.RegistrarInfo($"✅ Menu navegado: {categoria}");
+    }
+    catch (TimeoutException ex)
+    {
+        LoggingTask.RegistrarAviso($"Menu dropdown não abriu: {categoria}", "NavigationTask");
+        
+        // Fallback: tentar navegação direta
+        await Playwright.NavegarPara(page, $"{_config.Navegacao.UrlBase}/{categoria.ToLower()}");
+    }
+    finally
+    {
+        await page.Context.CloseAsync();
+    }
+}
+```
+
+#### Versão Robusta com Retry
+
+```csharp
+public async Task<bool> TentarMenuDropdownComRetry(string categoria, int maxTentativas = 3)
+{
+    for (int tentativa = 1; tentativa <= maxTentativas; tentativa++)
+    {
+        try
+        {
+            var page = await Playwright.CriarPagina();
+            await Playwright.NavegarPara(page, _config.Navegacao.UrlBase);
+            
+            // Hover no elemento pai
+            await page.Locator("nav.categories").HoverAsync();
+            
+            // Aguardar dropdown
+            await page.Locator(".category-dropdown").WaitForAsync(new LocatorWaitForOptions
+            {
+                State = WaitForSelectorState.Visible,
+                Timeout = 5000
+            });
+            
+            // Clicar na categoria
+            await page.Locator($"a[data-category='{categoria}']").ClickAsync();
+            
+            await page.Context.CloseAsync();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarAviso($"Tentativa {tentativa} falhou para menu {categoria}: {ex.Message}");
+            
+            if (tentativa == maxTentativas)
+            {
+                LoggingTask.RegistrarErro(ex, $"Menu dropdown falhou após {maxTentativas} tentativas");
+                return false;
+            }
+            
+            await Task.Delay(1000 * tentativa); // Delay progressivo
+        }
+    }
+    
+    return false;
+}
+```
+
+---
+
+### 6.5. Esperas Explícitas no AdrenalineSpy
+
+#### Aguardar Elementos do Adrenaline.com.br
+
+```csharp
+public async Task<List<NoticiaBasica>> AguardarEColetarNoticias()
+{
+    var page = await Playwright.CriarPagina();
+    await Playwright.NavegarPara(page, _config.Navegacao.UrlBase);
+    
+    try
+    {
+        // Aguardar artigos carregarem (padrão do projeto)
+        await page.WaitForSelectorAsync("article, .news-item", new PageWaitForSelectorOptions
+        {
+            State = WaitForSelectorState.Visible,
+            Timeout = _config.Navegacao.TimeoutSegundos * 1000
+        });
+        
+        LoggingTask.RegistrarInfo("✅ Artigos carregados, iniciando coleta...");
+        
+        // Aguardar spinner de loading desaparecer
+        try
+        {
+            await page.Locator(".loading, .spinner").WaitForAsync(new LocatorWaitForOptions
+            {
+                State = WaitForSelectorState.Hidden,
+                Timeout = 5000
+            });
+        }
+        catch (TimeoutException)
+        {
+            // Loading não existe ou já sumiu, continuar
+        }
+        
+        // Coletar dados após tudo carregar
+        var noticias = await ColetarDadosNoticias(page);
+        return noticias;
+    }
+    finally
+    {
+        await page.Context.CloseAsync();
+    }
+}
+```
+
+#### Esperas Específicas por Estado
+
+```csharp
+// Aguardar elemento específico aparecer usando Config
+await page.Locator("div.article-content").WaitForAsync(new LocatorWaitForOptions
 {
     State = WaitForSelectorState.Visible,
-    Timeout = 30000 // 30 segundos
+    Timeout = _config.Navegacao.TimeoutSegundos * 1000
 });
 
-// Esperar elemento existir no DOM (mesmo que invisível)
-await page.Locator("div.hidden-content").WaitForAsync(new LocatorWaitForOptions
+// Aguardar elemento existir (mesmo invisível)
+await page.Locator(".hidden-metadata").WaitForAsync(new LocatorWaitForOptions
 {
     State = WaitForSelectorState.Attached,
     Timeout = 10000
 });
 
-// Esperar elemento desaparecer
-await page.Locator("div.loading-spinner").WaitForAsync(new LocatorWaitForOptions
+// Aguardar elemento desaparecer (loading)
+await page.Locator(".loading-overlay").WaitForAsync(new LocatorWaitForOptions
 {
     State = WaitForSelectorState.Hidden,
     Timeout = 15000
 });
 
-// Esperar elemento ser removido do DOM
-await page.Locator("div.temp-message").WaitForAsync(new LocatorWaitForOptions
+// Aguardar remoção completa do DOM
+await page.Locator(".temp-notification").WaitForAsync(new LocatorWaitForOptions
 {
     State = WaitForSelectorState.Detached
 });
 ```
 
-#### Esperas de condições da página:
+#### Esperas de Condições de Página no AdrenalineSpy
 
 ```csharp
-// Esperar URL mudar
-await page.WaitForURLAsync("**/success");
-await page.WaitForURLAsync("https://exemplo.com/dashboard");
-
-// Esperar carregamento da rede
-await page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions
+public async Task AguardarPaginaCompleta(string urlEsperada)
 {
-    Timeout = 30000
-});
-
-// Esperar DOM carregar
-await page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
-
-// Esperar função JavaScript retornar true
-await page.WaitForFunctionAsync("() => document.readyState === 'complete'");
-
-// Esperar condição personalizada
-await page.WaitForFunctionAsync("() => document.querySelectorAll('article').length >= 10");
+    var page = await Playwright.CriarPagina();
+    
+    try
+    {
+        // Aguardar URL mudar para categoria específica
+        await page.WaitForURLAsync($"**/{urlEsperada}");
+        LoggingTask.RegistrarDebug($"✅ URL mudou para: {urlEsperada}");
+        
+        // Aguardar rede ficar ociosa (importante para SPAs)
+        await page.WaitForLoadStateAsync(LoadState.NetworkIdle, new PageWaitForLoadStateOptions
+        {
+            Timeout = _config.Navegacao.TimeoutSegundos * 1000
+        });
+        
+        // Aguardar condição específica: mínimo de artigos carregados
+        await page.WaitForFunctionAsync(
+            "() => document.querySelectorAll('article').length >= 5",
+            new PageWaitForFunctionOptions 
+            { 
+                Timeout = 15000 
+            });
+        
+        LoggingTask.RegistrarInfo("✅ Página totalmente carregada");
+    }
+    catch (TimeoutException ex)
+    {
+        LoggingTask.RegistrarAviso($"Timeout ao aguardar página: {ex.Message}");
+        throw;
+    }
+    finally
+    {
+        await page.Context.CloseAsync();
+    }
+}
 ```
 
-#### Esperas com timeout personalizados:
+#### Timeouts Personalizados Usando Config
 
 ```csharp
-// Timeout longo para elementos que demoram
-await page.Locator("div.slow-loading").WaitForAsync(new LocatorWaitForOptions
+// Timeout longo para páginas lentas
+await page.Locator(".heavy-content").WaitForAsync(new LocatorWaitForOptions
 {
-    Timeout = 60000 // 1 minuto
+    Timeout = _config.Navegacao.TimeoutSegundos * 2000 // 2x o timeout padrão
 });
 
 // Timeout curto para verificações rápidas
-await page.Locator("div.error-message").WaitForAsync(new LocatorWaitForOptions
+await page.Locator(".error-flash").WaitForAsync(new LocatorWaitForOptions
 {
-    Timeout = 2000 // 2 segundos
+    Timeout = 3000 // Apenas 3 segundos
 });
 
-// Usar timeout da configuração
-await page.Locator("div.content").WaitForAsync(new LocatorWaitForOptions
+// Timeout padrão do projeto
+await page.Locator("main.content").WaitForAsync(new LocatorWaitForOptions
 {
     Timeout = _config.Navegacao.TimeoutSegundos * 1000
 });
 ```
 
----
-
-### 6.6. Extração de Dados dos Seletores
+#### Padrão de Retry com Esperas
 
 ```csharp
-// Extrair texto visível
-string titulo = await page.Locator("h1.title").TextContentAsync();
-
-// Extrair texto interno (sem HTML)
-string conteudo = await page.Locator("div.content").InnerTextAsync();
-
-// Extrair HTML interno
-string html = await page.Locator("div.article").InnerHTMLAsync();
-
-// Extrair atributos
-string link = await page.Locator("a.read-more").GetAttributeAsync("href");
-string imagem = await page.Locator("img.thumbnail").GetAttributeAsync("src");
-string dataId = await page.Locator("article").GetAttributeAsync("data-id");
-
-// Extrair múltiplos elementos
-var titulos = await page.Locator("h2.article-title").AllTextContentsAsync();
-var links = await page.Locator("article a.permalink").AllAsync();
-
-// Iterar sobre múltiplos elementos
-foreach (var item in links)
+public async Task<bool> AguardarComRetry<T>(Func<Task<T>> acao, int maxTentativas = 3)
 {
-    string href = await item.GetAttributeAsync("href");
-    string texto = await item.TextContentAsync();
+    for (int tentativa = 1; tentativa <= maxTentativas; tentativa++)
+    {
+        try
+        {
+            await acao();
+            return true;
+        }
+        catch (TimeoutException)
+        {
+            LoggingTask.RegistrarAviso($"Timeout na tentativa {tentativa}/{maxTentativas}");
+            
+            if (tentativa < maxTentativas)
+                await Task.Delay(2000 * tentativa); // Delay progressivo
+        }
+    }
     
-    LoggingTask.RegistrarDebug($"Link encontrado: {texto} -> {href}");
+    return false;
 }
 
-// Contar elementos
-int totalArtigos = await page.Locator("article.news-item").CountAsync();
+---
 
-// Verificar se elemento existe
-bool temResultados = await page.Locator("div.results").CountAsync() > 0;
+### 6.6. Extração de Dados do Adrenaline.com.br
 
-// Extrair dados estruturados
-var noticias = new List<Noticia>();
-var articles = await page.Locator("article.news").AllAsync();
+#### Exemplo Completo: Extrair Dados de uma Notícia
 
-foreach (var article in articles)
+```csharp
+public async Task<NoticiaCompleta?> ExtrairNoticiaCompleta(string urlNoticia)
 {
-    var noticia = new Noticia
-    {
-        Titulo = await article.Locator("h2.title").TextContentAsync(),
-        Url = await article.Locator("a.permalink").GetAttributeAsync("href"),
-        DataTexto = await article.Locator(".publish-date").TextContentAsync(),
-        Resumo = await article.Locator(".summary").TextContentAsync()
-    };
+    var page = await Playwright.CriarPagina();
     
-    noticias.Add(noticia);
+    try
+    {
+        await Playwright.NavegarPara(page, urlNoticia);
+        
+        // Aguardar conteúdo principal carregar
+        await page.WaitForSelectorAsync("article, .post-content", new PageWaitForSelectorOptions
+        {
+            Timeout = _config.Navegacao.TimeoutSegundos * 1000
+        });
+        
+        // Extrair dados estruturados
+        var noticia = new NoticiaCompleta
+        {
+            Url = urlNoticia,
+            
+            // Título principal (vários seletores como fallback)
+            Titulo = await ExtrairTextoComFallback(page, [
+                "h1.post-title",
+                "h1.article-title", 
+                "h1",
+                ".entry-title"
+            ]),
+            
+            // Conteúdo do artigo
+            ConteudoHtml = await page.Locator(".post-content, .entry-content, article .content").InnerHTMLAsync(),
+            ConteudoTexto = await page.Locator(".post-content, .entry-content, article .content").InnerTextAsync(),
+            
+            // Metadados
+            Autor = await ExtrairTextoComFallback(page, [".author", ".by-author", "[rel='author']"]),
+            DataPublicacao = await ExtrairTextoComFallback(page, [".publish-date", ".date", "time"]),
+            Categoria = await ExtrairTextoComFallback(page, [".category", ".tag", ".post-category"]),
+            
+            // Imagem destacada
+            ImagemDestacada = await page.Locator(".featured-image img, .post-thumbnail img").GetAttributeAsync("src"),
+            
+            // Tags
+            Tags = await ExtrairListaTextos(page, ".tags a, .post-tags a"),
+            
+            // Contadores
+            Visualizacoes = await ExtrairNumero(page, ".view-count"),
+            Comentarios = await ExtrairNumero(page, ".comment-count"),
+            
+            DataExtracao = DateTime.Now
+        };
+        
+        LoggingTask.RegistrarInfo($"✅ Dados extraídos: {noticia.Titulo}");
+        return noticia;
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, $"Erro ao extrair notícia: {urlNoticia}");
+        return null;
+    }
+    finally
+    {
+        await page.Context.CloseAsync();
+    }
+}
+```
+
+#### Métodos Auxiliares para Extração Robusta
+
+```csharp
+/// <summary>
+/// Extrair texto com múltiplos seletores como fallback
+/// </summary>
+private async Task<string> ExtrairTextoComFallback(IPage page, string[] seletores)
+{
+    foreach (var seletor in seletores)
+    {
+        try
+        {
+            var texto = await page.Locator(seletor).TextContentAsync();
+            if (!string.IsNullOrWhiteSpace(texto))
+                return texto.Trim();
+        }
+        catch
+        {
+            // Tentar próximo seletor
+        }
+    }
+    
+    return string.Empty;
+}
+
+/// <summary>
+/// Extrair lista de textos (ex: tags, categorias)
+/// </summary>
+private async Task<List<string>> ExtrairListaTextos(IPage page, string seletor)
+{
+    try
+    {
+        var elementos = await page.Locator(seletor).AllAsync();
+        var textos = new List<string>();
+        
+        foreach (var elemento in elementos)
+        {
+            var texto = await elemento.TextContentAsync();
+            if (!string.IsNullOrWhiteSpace(texto))
+                textos.Add(texto.Trim());
+        }
+        
+        return textos;
+    }
+    catch
+    {
+        return new List<string>();
+    }
+}
+
+/// <summary>
+/// Extrair número de string (ex: "123 visualizações" -> 123)
+/// </summary>
+private async Task<int> ExtrairNumero(IPage page, string seletor)
+{
+    try
+    {
+        var texto = await page.Locator(seletor).TextContentAsync();
+        if (string.IsNullOrWhiteSpace(texto)) return 0;
+        
+        // Extrair apenas dígitos
+        var numeros = new string(texto.Where(char.IsDigit).ToArray());
+        return int.TryParse(numeros, out int resultado) ? resultado : 0;
+    }
+    catch
+    {
+        return 0;
+    }
+}
+
+#### Coleta em Massa de Notícias
+
+```csharp
+public async Task<List<NoticiaBasica>> ColetarTodasNoticias(string categoria)
+{
+    var page = await Playwright.CriarPagina();
+    var todasNoticias = new List<NoticiaBasica>();
+    
+    try
+    {
+        await Playwright.NavegarPara(page, $"{_config.Navegacao.UrlBase}/{categoria}");
+        
+        // Aguardar artigos carregarem
+        await page.WaitForSelectorAsync("article", new PageWaitForSelectorOptions
+        {
+            Timeout = _config.Navegacao.TimeoutSegundos * 1000
+        });
+        
+        // Contar total de artigos disponíveis
+        int totalArtigos = await page.Locator("article").CountAsync();
+        LoggingTask.RegistrarInfo($"Total de artigos encontrados: {totalArtigos}");
+        
+        if (totalArtigos == 0)
+        {
+            LoggingTask.RegistrarAviso("Nenhum artigo encontrado na categoria");
+            return todasNoticias;
+        }
+        
+        // Extrair dados de todos os artigos
+        var articles = await page.Locator("article").AllAsync();
+        
+        foreach (var article in articles)
+        {
+            try
+            {
+                var noticia = new NoticiaBasica
+                {
+                    Titulo = await ExtrairTextoSeguro(article, "h2, h3, .title"),
+                    Url = await ExtrairLinkCompleto(article, "a"),
+                    Resumo = await ExtrairTextoSeguro(article, ".excerpt, .summary"),
+                    DataPublicacao = await ExtrairTextoSeguro(article, ".date, time"),
+                    Categoria = categoria,
+                    DataColeta = DateTime.Now
+                };
+                
+                if (!string.IsNullOrWhiteSpace(noticia.Titulo))
+                {
+                    todasNoticias.Add(noticia);
+                    LoggingTask.RegistrarDebug($"Coletado: {noticia.Titulo}");
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggingTask.RegistrarAviso($"Erro ao extrair artigo: {ex.Message}");
+            }
+        }
+        
+        LoggingTask.RegistrarInfo($"✅ Coletadas {todasNoticias.Count} notícias de {categoria}");
+    }
+    finally
+    {
+        await page.Context.CloseAsync();
+    }
+    
+    return todasNoticias;
+}
+
+/// <summary>
+/// Extrair texto com fallback para elemento não encontrado
+/// </summary>
+private async Task<string> ExtrairTextoSeguro(ILocator elemento, string seletor)
+{
+    try
+    {
+        return await elemento.Locator(seletor).TextContentAsync() ?? string.Empty;
+    }
+    catch
+    {
+        return string.Empty;
+    }
+}
+
+/// <summary>
+/// Extrair URL completa (resolve URLs relativas)
+/// </summary>
+private async Task<string> ExtrairLinkCompleto(ILocator elemento, string seletor)
+{
+    try
+    {
+        var href = await elemento.Locator(seletor).GetAttributeAsync("href");
+        if (string.IsNullOrWhiteSpace(href)) return string.Empty;
+        
+        // Converter URL relativa em absoluta
+        if (href.StartsWith("/"))
+            return _config.Navegacao.UrlBase + href;
+        
+        return href.StartsWith("http") ? href : $"{_config.Navegacao.UrlBase}/{href}";
+    }
+    catch
+    {
+        return string.Empty;
+    }
 }
 ```
 
 ---
 
-### 6.7. Preenchimento de Formulários
+### 6.7. Busca e Formulários
+
+#### Buscar Notícias no Adrenaline.com.br
 
 ```csharp
-// Preencher campos de texto
-await page.Locator("input#name").FillAsync("João Silva");
-await page.Locator("textarea#message").FillAsync("Mensagem de teste");
-
-// Limpar campo e preencher
-await page.Locator("input#email").FillAsync(""); // limpar
-await page.Locator("input#email").FillAsync("novo@email.com");
-
-// Digitar com delay (simular digitação humana)
-await page.Locator("input#search").TypeAsync("Playwright", new LocatorTypeOptions
+public async Task<List<NoticiaBasica>> BuscarNoticias(string termoBusca)
 {
-    Delay = 100 // 100ms entre cada tecla
+    var page = await Playwright.CriarPagina();
+    var resultados = new List<NoticiaBasica>();
+    
+    try
+    {
+        await Playwright.NavegarPara(page, _config.Navegacao.UrlBase);
+        
+        // Localizar campo de busca
+        await page.WaitForSelectorAsync("input[type='search'], .search-input", new PageWaitForSelectorOptions
+        {
+            Timeout = _config.Navegacao.TimeoutSegundos * 1000
+        });
+        
+        // Preencher campo de busca
+        await page.Locator("input[type='search'], .search-input").FillAsync(termoBusca);
+        
+        LoggingTask.RegistrarInfo($"Buscando por: {termoBusca}");
+        
+        // Pressionar Enter ou clicar no botão
+        await page.Locator("input[type='search']").PressAsync("Enter");
+        
+        // Aguardar resultados carregarem
+        await page.WaitForSelectorAsync(".search-results, .results", new PageWaitForSelectorOptions
+        {
+            Timeout = 15000
+        });
+        
+        // Extrair resultados da busca
+        var articles = await page.Locator(".search-result, .result-item").AllAsync();
+        
+        foreach (var article in articles)
+        {
+            var noticia = new NoticiaBasica
+            {
+                Titulo = await ExtrairTextoSeguro(article, "h2, h3, .title"),
+                Url = await ExtrairLinkCompleto(article, "a"),
+                Resumo = await ExtrairTextoSeguro(article, ".excerpt, .summary"),
+                DataColeta = DateTime.Now
+            };
+            
+            resultados.Add(noticia);
+        }
+        
+        LoggingTask.RegistrarInfo($"✅ Encontradas {resultados.Count} notícias para '{termoBusca}'");
+    }
+    catch (Exception ex)
+    {
+        LoggingTask.RegistrarErro(ex, $"Erro ao buscar: {termoBusca}");
+    }
+    finally
+    {
+        await page.Context.CloseAsync();
+    }
+    
+    return resultados;
+}
+```
+
+#### Preenchimento Avançado de Formulários
+
+**🎯 Qual método usar quando?**
+
+- **`FillAsync`** ✅ - Para preenchimento rápido e confiável (95% dos casos)
+- **`PressSequentiallyAsync`** ⚠️ - Apenas quando precisar de delay para stealth
+- **`TypeAsync`** ❌ - Obsoleto (não usar mais)
+
+```csharp
+// ✅ MÉTODO RECOMENDADO: FillAsync (rápido e confiável)
+await page.Locator("input#search").FillAsync(""); // limpar
+await page.Locator("input#search").FillAsync("Tecnologia");
+
+// ✅ Para campos que precisam de delay (comportamento stealth)
+// Use PressSequentiallyAsync quando necessário
+await page.Locator("input#search").PressSequentiallyAsync("Playwright RPA", new LocatorPressSequentiallyOptions
+{
+    Delay = Random.Shared.Next(80, 200) // Entre 80-200ms
 });
 
 // Pressionar teclas especiais
 await page.Locator("input").PressAsync("Enter");
 await page.Locator("input").PressAsync("Tab");
 await page.Locator("input").PressAsync("Escape");
+
+// Combinações de teclas úteis
+await page.Locator("input").PressAsync("Control+A"); // Selecionar tudo
+await page.Locator("input").PressAsync("Control+C"); // Copiar
+await page.Locator("input").PressAsync("Control+V"); // Colar
 
 // Combinações de teclas
 await page.Locator("input").PressAsync("Control+A"); // Selecionar tudo
@@ -1191,130 +1823,327 @@ await page.Locator("input").PressAsync("Control+C"); // Copiar
 
 ---
 
-### 6.8. Verificações e Validações
+### 6.8. Verificações e Validações no AdrenalineSpy
+
+#### Validações de Página e Conteúdo
 
 ```csharp
-// Verificar se elemento está visível
-bool isVisible = await page.Locator("button.submit").IsVisibleAsync();
-
-// Verificar se elemento está habilitado
-bool isEnabled = await page.Locator("button").IsEnabledAsync();
-
-// Verificar se checkbox está marcado
-bool isChecked = await page.Locator("input[type='checkbox']").IsCheckedAsync();
-
-// Usar verificações em condições
-if (await page.Locator("div.error").IsVisibleAsync())
+public async Task<bool> ValidarPaginaAdrenaline(string categoria)
 {
-    string errorMessage = await page.Locator("div.error").TextContentAsync();
-    LoggingTask.RegistrarErro(new Exception(errorMessage), "Erro na página");
-}
-
-// Aguardar condição ser verdadeira
-await page.Locator("button.submit").WaitForAsync(new LocatorWaitForOptions
-{
-    State = WaitForSelectorState.Visible
-});
-
-if (await page.Locator("button.submit").IsEnabledAsync())
-{
-    await page.Locator("button.submit").ClickAsync();
-}
-```
-
----
-
-### 6.9. Screenshots para Debug
-
-```csharp
-// Screenshot da página inteira
-await page.ScreenshotAsync(new PageScreenshotOptions
-{
-    Path = "debug-pagina.png",
-    FullPage = true
-});
-
-// Screenshot de um elemento específico
-await page.Locator("div.content").ScreenshotAsync(new LocatorScreenshotOptions
-{
-    Path = "debug-elemento.png"
-});
-
-// Screenshot condicionado (só em caso de erro)
-try
-{
-    await page.Locator("button").ClickAsync();
-}
-catch (Exception ex)
-{
-    await page.ScreenshotAsync(new PageScreenshotOptions
+    var page = await Playwright.CriarPagina();
+    
+    try
     {
-        Path = $"erro-{DateTime.Now:yyyyMMdd-HHmmss}.png"
-    });
-    
-    LoggingTask.RegistrarErro(ex, "Erro ao clicar no botão");
-    throw;
+        await Playwright.NavegarPara(page, $"{_config.Navegacao.UrlBase}/{categoria}");
+        
+        // Verificar se carregou corretamente
+        bool paginaValida = await page.Locator("article, .news-item").CountAsync() > 0;
+        
+        if (!paginaValida)
+        {
+            LoggingTask.RegistrarAviso($"Página {categoria} não contém artigos");
+            return false;
+        }
+        
+        // Verificar se não é página de erro
+        bool temErro = await page.Locator(".error, .not-found, .404").IsVisibleAsync();
+        if (temErro)
+        {
+            string mensagemErro = await page.Locator(".error, .not-found").TextContentAsync();
+            LoggingTask.RegistrarErro(new Exception($"Página de erro: {mensagemErro}"), "ValidarPagina");
+            return false;
+        }
+        
+        // Verificar título da página
+        string titulo = await page.TitleAsync();
+        bool tituloValido = !string.IsNullOrWhiteSpace(titulo) && !titulo.Contains("Error");
+        
+        LoggingTask.RegistrarInfo($"✅ Página válida - Título: {titulo}");
+        return paginaValida && !temErro && tituloValido;
+    }
+    finally
+    {
+        await page.Context.CloseAsync();
+    }
 }
 ```
 
----
-
-### 6.10. Exemplo Prático: Scraping com Retry
+#### Verificações Condicionais com Logging
 
 ```csharp
-/// <summary>
-/// Navegar para uma página com retry automático em caso de falha
-/// </summary>
-public async string NavegarComRetry(string url, int maxTentativas = 3)
+public async Task VerificarElementosOpcionais(IPage page)
 {
-    int tentativa = 0;
+    // Verificar se botão "Load More" está disponível
+    bool temLoadMore = await page.Locator("button.load-more, .pagination").IsVisibleAsync();
+    if (temLoadMore)
+    {
+        LoggingTask.RegistrarDebug("Paginação disponível na página");
+    }
     
-    while (tentativa < maxTentativas)
+    // Verificar se há notificações ou alertas
+    if (await page.Locator(".alert, .notification").IsVisibleAsync())
+    {
+        string mensagem = await page.Locator(".alert, .notification").TextContentAsync();
+        LoggingTask.RegistrarInfo($"Notificação na página: {mensagem}");
+    }
+    
+    // Verificar se conteúdo está carregando
+    bool carregando = await page.Locator(".loading, .spinner").IsVisibleAsync();
+    if (carregando)
+    {
+        LoggingTask.RegistrarDebug("Aguardando conteúdo carregar...");
+        
+        // Aguardar loading desaparecer
+        await page.Locator(".loading, .spinner").WaitForAsync(new LocatorWaitForOptions
+        {
+            State = WaitForSelectorState.Hidden,
+            Timeout = 10000
+        });
+    }
+}
+
+---
+
+### 6.9. Screenshots e Debug
+
+#### Sistema de Screenshots Automático
+
+```csharp
+public class DebugHelper
+{
+    private readonly Config _config;
+    private static int _contadorScreenshots = 0;
+    
+    public DebugHelper()
+    {
+        _config = Config.Instancia;
+    }
+    
+    /// <summary>
+    /// Capturar screenshot com nome automático e timestamp
+    /// </summary>
+    public async Task CapturarScreenshot(IPage page, string contexto)
     {
         try
         {
-            tentativa++;
-            LoggingTask.RegistrarDebug($"Tentativa {tentativa}/{maxTentativas} para {url}");
-
-            var page = await CriarPagina();
-
-            // Navegar com timeout
-            await page.GotoAsync(url, new PageGotoOptions
-            {
-                Timeout = _config.Navegacao.TimeoutSegundos * 1000,
-                WaitUntil = WaitUntilState.DOMContentLoaded
-            });
-
-            // Aguardar conteúdo principal carregar
-            await page.WaitForSelectorAsync("main, #content, .content", new PageWaitForSelectorOptions
-            {
-                Timeout = 10000
-            });
-
-            // Extrair conteúdo HTML
-            string html = await page.ContentAsync();
+            var timestamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+            var contador = Interlocked.Increment(ref _contadorScreenshots);
+            var nomeArquivo = $"debug-{contexto}-{timestamp}-{contador:D3}.png";
             
-            await page.Context.CloseAsync();
-
-            LoggingTask.RegistrarInfo($"✅ Página carregada com sucesso: {url}");
-            return html;
+            await page.ScreenshotAsync(new PageScreenshotOptions
+            {
+                Path = Path.Combine("Screenshots", nomeArquivo),
+                FullPage = true
+            });
+            
+            LoggingTask.RegistrarDebug($"Screenshot capturada: {nomeArquivo}");
         }
-        catch (TimeoutException ex)
+        catch (Exception ex)
         {
-            LoggingTask.RegistrarAviso($"Timeout na tentativa {tentativa}: {ex.Message}", "NavegarComRetry");
-            
-            if (tentativa >= maxTentativas)
-            {
-                LoggingTask.RegistrarErro(ex, $"Todas as tentativas falharam para {url}");
-                throw;
-            }
-
-            // Aguardar antes da próxima tentativa
-            await Task.Delay(_config.Scraping.DelayAposErro);
+            LoggingTask.RegistrarAviso($"Erro ao capturar screenshot: {ex.Message}");
         }
     }
+    
+    /// <summary>
+    /// Screenshot automático em caso de erro
+    /// </summary>
+    public async Task ExecutarComScreenshotDeErro(IPage page, Func<Task> acao, string contexto)
+    {
+        try
+        {
+            await acao();
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro(ex, $"Erro em {contexto}");
+            await CapturarScreenshot(page, $"erro-{contexto}");
+            throw; // Re-propagar o erro
+        }
+    }
+}
+```
 
-    throw new Exception($"Falha ao navegar para {url} após {maxTentativas} tentativas");
+#### Uso Prático no NavigationTask
+
+```csharp
+public async Task<List<string>> ColetarUrlsComDebug(string categoria)
+{
+    var page = await Playwright.CriarPagina();
+    var debugHelper = new DebugHelper();
+    
+    try
+    {
+        await Playwright.NavegarPara(page, $"{_config.Navegacao.UrlBase}/{categoria}");
+        
+        // Screenshot da página inicial
+        await debugHelper.CapturarScreenshot(page, $"pagina-{categoria}");
+        
+        // Executar coleta com screenshot automático em caso de erro
+        var urls = new List<string>();
+        
+        await debugHelper.ExecutarComScreenshotDeErro(page, async () =>
+        {
+            await page.WaitForSelectorAsync("article");
+            var links = await page.Locator("article a").AllAsync();
+            
+            foreach (var link in links)
+            {
+                var href = await link.GetAttributeAsync("href");
+                if (!string.IsNullOrEmpty(href))
+                    urls.Add(href);
+            }
+        }, $"coleta-{categoria}");
+        
+        return urls;
+    }
+    finally
+    {
+        await page.Context.CloseAsync();
+    }
+}
+---
+
+### 6.10. Exemplo Completo: Task de Coleta Robusta
+
+```csharp
+/// <summary>
+/// Task completa de coleta usando todos os padrões do AdrenalineSpy
+/// </summary>
+public class NavigationTaskCompleta
+{
+    private readonly Config _config;
+    private readonly DebugHelper _debugHelper;
+    
+    public NavigationTaskCompleta()
+    {
+        _config = Config.Instancia;
+        _debugHelper = new DebugHelper();
+    }
+    
+    /// <summary>
+    /// Coleta robusta com retry, logging e screenshots
+    /// </summary>
+    public async Task<List<NoticiaCompleta>> ColetarNoticiasCompletas(string categoria, int maxPaginas = 3)
+    {
+        var todasNoticias = new List<NoticiaCompleta>();
+        
+        try
+        {
+            LoggingTask.RegistrarInfo($"=== Iniciando coleta completa: {categoria} ===");
+            
+            // Validar categoria antes de começar
+            if (!await ValidarCategoriaExiste(categoria))
+            {
+                LoggingTask.RegistrarAviso($"Categoria {categoria} não existe");
+                return todasNoticias;
+            }
+            
+            // Coletar URLs de múltiplas páginas
+            var urls = await ColetarUrlsMultiplasPaginas(categoria, maxPaginas);
+            LoggingTask.RegistrarInfo($"URLs coletadas: {urls.Count}");
+            
+            // Processar cada URL com controle de paralelismo
+            var semaforo = new SemaphoreSlim(2); // Máximo 2 páginas simultâneas
+            var tasks = urls.Select(async url =>
+            {
+                await semaforo.WaitAsync();
+                try
+                {
+                    return await ExtrairNoticiaComRetry(url, maxTentativas: 3);
+                }
+                finally
+                {
+                    semaforo.Release();
+                }
+            });
+            
+            var resultados = await Task.WhenAll(tasks);
+            todasNoticias = resultados.Where(n => n != null).ToList();
+            
+            LoggingTask.RegistrarInfo($"✅ Coleta finalizada: {todasNoticias.Count} notícias extraídas");
+            return todasNoticias;
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro(ex, $"Erro na coleta completa de {categoria}");
+            return todasNoticias;
+        }
+    }
+    
+    /// <summary>
+    /// Validar se categoria existe no site
+    /// </summary>
+    private async Task<bool> ValidarCategoriaExiste(string categoria)
+    {
+        var page = await Playwright.CriarPagina();
+        try
+        {
+            await Playwright.NavegarPara(page, $"{_config.Navegacao.UrlBase}/{categoria}");
+            
+            // Verificar se não é página 404
+            bool isError = await page.Locator(".error-404, .not-found").CountAsync() > 0;
+            return !isError;
+        }
+        finally
+        {
+            await page.Context.CloseAsync();
+        }
+    }
+    
+    /// <summary>
+    /// Extrair notícia com retry automático
+    /// </summary>
+    private async Task<NoticiaCompleta?> ExtrairNoticiaComRetry(string url, int maxTentativas = 3)
+    {
+        for (int tentativa = 1; tentativa <= maxTentativas; tentativa++)
+        {
+            var page = await Playwright.CriarPagina();
+            
+            try
+            {
+                await _debugHelper.ExecutarComScreenshotDeErro(page, async () =>
+                {
+                    await Playwright.NavegarPara(page, url);
+                    await page.WaitForSelectorAsync("article, .post", new PageWaitForSelectorOptions
+                    {
+                        Timeout = _config.Navegacao.TimeoutSegundos * 1000
+                    });
+                }, $"extracao-tentativa-{tentativa}");
+                
+                var noticia = await ExtrairNoticiaCompleta(page, url);
+                LoggingTask.RegistrarDebug($"✅ Extraída: {noticia?.Titulo}");
+                
+                return noticia;
+            }
+            catch (Exception ex)
+            {
+                LoggingTask.RegistrarAviso($"Tentativa {tentativa} falhou para {url}: {ex.Message}");
+                
+                if (tentativa == maxTentativas)
+                {
+                    LoggingTask.RegistrarErro(ex, $"Falha definitiva: {url}");
+                    return null;
+                }
+                
+                await Task.Delay(2000 * tentativa); // Delay progressivo
+            }
+            finally
+            {
+                await page.Context.CloseAsync();
+            }
+        }
+        
+        return null;
+    }
+    
+    /// <summary>
+    /// Finalizar todos os recursos do Playwright
+    /// </summary>
+    public async Task Finalizar()
+    {
+        await Playwright.Finalizar();
+        LoggingTask.RegistrarInfo("NavigationTaskCompleta finalizada");
+    }
 }
 ```
 
@@ -1365,43 +2194,102 @@ var dados = await page.EvaluateAsync<dynamic>(@"
 
 ---
 
-## Boas Práticas
+## Boas Práticas do AdrenalineSpy
 
-### ✅ Fazer
+### ✅ SEMPRE Fazer (Padrões do Projeto)
 
 ```csharp
-// Usar configurações do Config.cs
+// 1. Usar a classe Playwright.cs centralizada
+var page = await Playwright.CriarPagina();
+await Playwright.NavegarPara(page, url);
+
+// 2. Usar configurações do Config.cs
 var timeout = _config.Navegacao.TimeoutSegundos * 1000;
 
-// Aguardar elementos antes de interagir
-await page.WaitForSelectorAsync("button");
-await page.Locator("button").ClickAsync();
+// 3. Logging completo com LoggingTask
+LoggingTask.RegistrarInfo("Iniciando navegação");
+LoggingTask.RegistrarErro(ex, "Contexto do erro");
 
-// Logar operações importantes
-LoggingTask.RegistrarInfo("Iniciando extração de dados");
-
-// Fechar contextos para liberar memória
+// 4. SEMPRE fechar contextos
 await page.Context.CloseAsync();
+await Playwright.Finalizar(); // No final da aplicação
 
-// Tratar exceções específicas
+// 5. Aguardar elementos antes de interagir
+await page.WaitForSelectorAsync("article");
+var elementos = await page.Locator("article").AllAsync();
+
+// 6. Tratar exceções específicas
 try { }
-catch (TimeoutException ex) { /* retry logic */ }
+catch (TimeoutException ex) { /* retry */ }
+catch (Exception ex) { LoggingTask.RegistrarErro(ex, "Contexto"); }
+
+// 7. Usar try-finally para limpeza garantida
+try
+{
+    // operações
+}
+finally
+{
+    await page.Context.CloseAsync();
+}
 ```
 
-### ❌ Evitar
+### ❌ NUNCA Fazer
 
 ```csharp
-// Thread.Sleep (usar Task.Delay e esperas do Playwright)
-Thread.Sleep(5000); // ❌
+// 1. Usar page.GotoAsync diretamente
+await page.GotoAsync(url); // ❌ Use Playwright.NavegarPara()
 
-// Hardcoded timeouts (usar Config)
-await page.WaitForTimeout(30000); // ❌
+// 2. Thread.Sleep ou delays fixos
+Thread.Sleep(5000); // ❌ Use esperas explícitas do Playwright
 
-// Ignorar erros sem log
-catch (Exception) { } // ❌
+// 3. Métodos obsoletos de digitação
+await page.Locator("input").TypeAsync("texto"); // ❌ Use FillAsync ou PressSequentiallyAsync
 
-// Deixar páginas abertas sem fechar contextos
-// Sempre feche com page.Context.CloseAsync()
+// 4. Hardcoded timeouts
+await page.WaitForTimeout(30000); // ❌ Use _config.Navegacao.TimeoutSegundos
+
+// 4. Ignorar erros
+catch (Exception) { } // ❌ SEMPRE logar com LoggingTask
+
+// 5. Deixar recursos abertos
+// ❌ Sempre feche: page.Context.CloseAsync() + Playwright.Finalizar()
+
+// 6. Criar múltiplas instâncias do navegador
+var browser1 = await Playwright.CreateAsync(); // ❌
+var browser2 = await Playwright.CreateAsync(); // ❌
+// Use a instância centralizada da classe Playwright
+
+// 7. Seletores genéricos
+page.Locator("div"); // ❌ Seja específico: "article.news-item"
+```
+
+### 💡 Dicas Específicas para Adrenaline.com.br
+
+```csharp
+// 1. Sempre aguardar artigos carregarem
+await page.WaitForSelectorAsync("article", new PageWaitForSelectorOptions
+{
+    Timeout = _config.Navegacao.TimeoutSegundos * 1000
+});
+
+// 2. Usar múltiplos seletores como fallback
+string titulo = await ExtrairTextoComFallback(page, [
+    "h1.post-title", "h1", ".title"
+]);
+
+// 3. Verificar se é página de erro
+bool isError = await page.Locator(".error-404, .not-found").CountAsync() > 0;
+
+// 4. Screenshots automáticos para debug
+await debugHelper.CapturarScreenshot(page, "contexto");
+
+// 5. Controlar paralelismo
+var semaforo = new SemaphoreSlim(2); // Máximo 2 páginas simultâneas
+
+// 6. Janela maximizada para debug visual
+// Configure no AutomationSettings.json: "JanelaMaximizada": true
+// Funciona apenas em modo não-headless (HeadlessMode: false)
 ```
 
 ---

@@ -214,44 +214,47 @@ public static class LoggingTask
 Modifique o `Program.cs` para inicializar o logging:
 
 ```csharp
-namespace AdrenalineSpy;
+using AdrenalineSpy;
 
-class Program
+namespace AdrenalineSpy
 {
-    static async Task Main(string[] args)
+    class Program
     {
-        try
+        static void Main(string[] args)
         {
-            // Inicializar logging PRIMEIRO
-            LoggingTask.ConfigurarLogger();
-            LoggingTask.RegistrarInfo("=== AdrenalineSpy RPA Iniciado ===");
-
-            // Carregar configurações
-            var config = Config.Instancia;
-            if (!config.Validar())
+            try
             {
-                LoggingTask.RegistrarErro(new Exception("Configurações inválidas"), "Program");
-                return;
+                // Inicializar logging PRIMEIRO
+                LoggingTask.ConfigurarLogger();
+                LoggingTask.RegistrarInfo("=== AdrenalineSpy RPA Iniciado ===");
+
+                // Carregar configurações
+                var config = Config.Instancia;
+                if (!config.Validar())
+                {
+                    LoggingTask.RegistrarErro(new Exception("Configurações inválidas"), "Program");
+                    return;
+                }
+
+                LoggingTask.RegistrarInfo($"Configurações carregadas - URL: {config.Navegacao.UrlBase}, Categorias: {config.Categorias.Count}");
+
+                // Aqui virão as outras Tasks (NavigationTask, ExtractionTask, etc.)
+                LoggingTask.RegistrarInfo("Iniciando workflow de scraping...");
+
+                // TODO: Implementar Workflow.cs
+
+                LoggingTask.RegistrarInfo("=== AdrenalineSpy RPA Finalizado com Sucesso ===");
             }
-
-            LoggingTask.RegistrarInfo($"Configurações carregadas - URL: {config.Navegacao.UrlBase}, Categorias: {config.Categorias.Count}");
-
-            // Aqui virão as outras Tasks (NavigationTask, ExtractionTask, etc.)
-            LoggingTask.RegistrarInfo("Iniciando workflow de scraping...");
-            
-            // TODO: Implementar Workflow.cs
-            
-            LoggingTask.RegistrarInfo("=== AdrenalineSpy RPA Finalizado com Sucesso ===");
-        }
-        catch (Exception ex)
-        {
-            LoggingTask.RegistrarErro(ex, "Program - Erro Fatal");
-            Console.WriteLine($"❌ Erro fatal: {ex.Message}");
-        }
-        finally
-        {
-            // Finalizar logging
-            LoggingTask.FecharLogger();
+            catch (Exception ex)
+            {
+                LoggingTask.RegistrarErro(ex, "Program - Erro Fatal");
+                Console.WriteLine($"❌ Erro fatal: {ex.Message}");
+            }
+            finally
+            {
+                // Finalizar logging
+                LoggingTask.FecharLogger();
+            }
         }
     }
 }
