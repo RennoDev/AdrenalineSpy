@@ -26,40 +26,30 @@ public class NavigationGoogle
             // Criar página usando nossa classe Playwright
             var page = await Playwright.CriarPagina();
 
-            // Navegar para o Google
-            await Playwright.NavegarPara(page, "https://www.google.com");
+            // Maximizar janela antes de navegar
+            await Playwright.MaximizarJanela(page);
 
-            // Aguardar campo de pesquisa aparecer
-            await page.WaitForSelectorAsync("input[name='q']", new PageWaitForSelectorOptions
+            // Navegar para o site de teste
+            await Playwright.NavegarPara(page, "https://example.com");
+
+            // Aguardar o título da página aparecer
+            await page.WaitForSelectorAsync("h1", new PageWaitForSelectorOptions
             {
                 Timeout = 10000
             });
 
-            // Localizar campo de pesquisa (seletor do Google)
-            var campoPesquisa = page.Locator("input[name='q']");
+            // Verificar se a página carregou corretamente
+            var titulo = await page.TitleAsync();
+            LoggingTask.RegistrarInfo($"✅ Página carregada: {titulo}");
 
-            // Escrever "playwright" no campo
-            await campoPesquisa.FillAsync("playwright");
-            LoggingTask.RegistrarInfo("✅ Texto 'playwright' digitado no campo de pesquisa");
+            // Verificar o tamanho atual da janela via JavaScript
+            var tamanhoJanela = await page.EvaluateAsync<dynamic>("() => ({ width: window.outerWidth, height: window.outerHeight, screen: { width: screen.width, height: screen.height } })");
+            LoggingTask.RegistrarInfo($"📏 Tamanho da janela: {tamanhoJanela.width}x{tamanhoJanela.height}");
+            LoggingTask.RegistrarInfo($"📺 Tamanho da tela: {tamanhoJanela.screen.width}x{tamanhoJanela.screen.height}");
 
-            // Pressionar Enter para enviar a pesquisa
-            await campoPesquisa.PressAsync("Enter");
-            LoggingTask.RegistrarInfo("✅ Tecla Enter pressionada");
-
-            // Aguardar resultados carregarem
-            await page.WaitForSelectorAsync("#search", new PageWaitForSelectorOptions
-            {
-                Timeout = 10000
-            });
-
-            // Capturar screenshot dos resultados
-            await page.ScreenshotAsync(new PageScreenshotOptions
-            {
-                Path = "google-resultados-playwright.png",
-                FullPage = false
-            });
-
-            LoggingTask.RegistrarInfo("✅ Pesquisa concluída e screenshot salvo");
+            // Pausa para visualização manual dos resultados
+            LoggingTask.RegistrarInfo("📋 Pressione qualquer tecla para continuar e fechar o navegador");
+            Console.ReadKey();
 
             // Fechar página
             await page.Context.CloseAsync();

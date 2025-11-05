@@ -4,36 +4,39 @@ namespace AdrenalineSpy
 {
     class Program
     {
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
-            // 1. Carregar configurações
-            Config config = Config.Instancia;
-
-            if (!config.Validar())
-            {
-                Console.WriteLine("❌ Configurações inválidas!");
-                return;
-            }
-
-            // 2. Configurar logger
-            LoggingTask.ConfigurarLogger();
-
             try
             {
-                // 3. Usar logging
-                LoggingTask.RegistrarInfo("=== Aplicação Iniciada ===");
+                // Inicializar logging PRIMEIRO
+                LoggingTask.ConfigurarLogger();
+                LoggingTask.RegistrarInfo("=== AdrenalineSpy RPA Iniciado ===");
 
-                // Seu código aqui...
+                // Carregar configurações
+                var config = Config.Instancia;
+                if (!config.Validar())
+                {
+                    LoggingTask.RegistrarErro(new Exception("Configurações inválidas"), "Program");
+                    return;
+                }
 
-                LoggingTask.RegistrarInfo("=== Aplicação Finalizada ===");
+                LoggingTask.RegistrarInfo($"Configurações carregadas - URL: {config.Navegacao.UrlBase}, Categorias: {config.Categorias.Count}");
+                LoggingTask.RegistrarInfo("Iniciando Workflow...");
+
+                // TODO: Implementar Workflow.cs
+                var googleTask = new NavigationGoogle();
+                await googleTask.ExemploPesquisarGoogle();
+
+                LoggingTask.RegistrarInfo("=== AdrenalineSpy RPA Finalizado com Sucesso ===");
             }
             catch (Exception ex)
             {
-                LoggingTask.RegistrarErro(ex, "Program.Main");
+                LoggingTask.RegistrarErro(ex, "Program - Erro Fatal");
+                Console.WriteLine($"❌ Erro fatal: {ex.Message}");
             }
             finally
             {
-                // 4. SEMPRE fechar
+                // Finalizar logging
                 LoggingTask.FecharLogger();
             }
         }

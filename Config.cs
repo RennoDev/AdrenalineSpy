@@ -11,16 +11,17 @@ public class Config
     private static Config? _instancia;
     private readonly string _caminhoArquivo = "AutomationSettings.json";
 
-    // Propriedades principais
+    // Propriedades principais - uma para cada seção do JSON
     public NavegacaoConfig Navegacao { get; set; } = new();
     public Dictionary<string, string> Categorias { get; set; } = new();
     public ScrapingConfig Scraping { get; set; } = new();
     public DatabaseConfig Database { get; set; } = new();
+    public APIConfig API { get; set; } = new();
     public LoggingConfig Logging { get; set; } = new();
     public AgendamentoConfig Agendamento { get; set; } = new();
     public ExportacaoConfig Exportacao { get; set; } = new();
 
-    // Singleton - Instância única
+    // Singleton - Instância única acessível via Config.Instancia
     public static Config Instancia
     {
         get
@@ -28,13 +29,13 @@ public class Config
             if (_instancia == null)
             {
                 _instancia = new Config();
-                _instancia.Carregar();
+                _instancia.Carregar(); // Carrega JSON automaticamente
             }
             return _instancia;
         }
     }
 
-    // Construtor privado (Singleton)
+    // Construtor privado (padrão Singleton)
     private Config() { }
 
     /// <summary>
@@ -60,7 +61,7 @@ public class Config
                 throw new InvalidOperationException("Falha ao deserializar configurações.");
             }
 
-            // Copiar propriedades
+            // Copiar propriedades do JSON deserializado para esta instância
             Navegacao = configuracoes.Navegacao;
             Categorias = configuracoes.Categorias;
             Scraping = configuracoes.Scraping;
@@ -74,7 +75,7 @@ public class Config
         catch (Exception ex)
         {
             Console.WriteLine($"❌ Erro ao carregar configurações: {ex.Message}");
-            throw;
+            throw; // Re-lança para parar execução se config falhar
         }
     }
 
@@ -85,6 +86,7 @@ public class Config
     {
         var erros = new List<string>();
 
+        // Validações obrigatórias
         if (string.IsNullOrWhiteSpace(Navegacao.UrlBase))
             erros.Add("Navegacao.UrlBase não pode estar vazia");
 
@@ -100,6 +102,7 @@ public class Config
         if (string.IsNullOrWhiteSpace(Database.Usuario))
             erros.Add("Database.Usuario não pode estar vazio");
 
+        // Mostrar erros se existirem
         if (erros.Any())
         {
             Console.WriteLine("❌ Erros de validação:");
@@ -112,7 +115,7 @@ public class Config
     }
 
     /// <summary>
-    /// Obtém a connection string do banco de dados
+    /// Obtém a connection string do banco de dados baseada no provider
     /// </summary>
     public string ObterConnectionString()
     {
@@ -130,58 +133,71 @@ public class Config
             _ => throw new NotSupportedException($"Provider '{Database.Provider}' não suportado")
         };
     }
-}
 
-// Classes auxiliares para organização e tipagem das configurações vindas do JSON, além de valores padrão caso o JSON não os defina.
-public class NavegacaoConfig
-{
-    public string UrlBase { get; set; } = string.Empty;
-    public int TimeoutSegundos { get; set; } = 30;
-    public bool HeadlessMode { get; set; } = false;
-    public string NavegadorPadrao { get; set; } = "chromium";
-    public int ViewportWidth { get; set; } = 1920;
-    public int ViewportHeight { get; set; } = 1080;
-    public string UserAgent { get; set; } = string.Empty;
-    public bool BloquearImagens { get; set; } = false;
-    public bool BloquearCSS { get; set; } = false;
-}
+    // Classes auxiliares para organização e tipagem das configurações vindas do JSON
+    // Valores padrão garantem funcionamento mesmo se JSON estiver incompleto
 
-public class ScrapingConfig
-{
-    public int IntervaloEntreRequests { get; set; } = 2000;
-    public int MaximoTentativas { get; set; } = 3;
-    public int DelayAposErro { get; set; } = 5000;
-}
+    public class NavegacaoConfig
+    {
+        public string UrlBase { get; set; } = string.Empty;
+        public int TimeoutSegundos { get; set; } = 30;
+        public bool HeadlessMode { get; set; } = false;
+        public string NavegadorPadrao { get; set; } = "chromium";
+        public int ViewportWidth { get; set; } = 1920;
+        public int ViewportHeight { get; set; } = 1080;
+        public string UserAgent { get; set; } = string.Empty;
+        public bool BloquearImagens { get; set; } = false;
+        public bool BloquearCSS { get; set; } = false;
+        public bool JanelaMaximizada { get; set; } = true;
+    }
 
-public class DatabaseConfig
-{
-    public string Provider { get; set; } = "MySQL";
-    public string Host { get; set; } = "localhost";
-    public int Port { get; set; } = 3306;
-    public string NomeBanco { get; set; } = string.Empty;
-    public string Usuario { get; set; } = string.Empty;
-    public string Senha { get; set; } = string.Empty;
-    public int ConnectionTimeout { get; set; } = 30;
-}
+    public class ScrapingConfig
+    {
+        public int IntervaloEntreRequests { get; set; } = 2000;  // 2 segundos
+        public int MaximoTentativas { get; set; } = 3;
+        public int DelayAposErro { get; set; } = 5000;           // 5 segundos
+    }
 
-public class LoggingConfig
-{
-    public string DiretorioLogs { get; set; } = "logs";
-    public string NivelMinimo { get; set; } = "Information";
-    public string ArquivoSucesso { get; set; } = "sucesso/log-{Date}.txt";
-    public string ArquivoFalha { get; set; } = "falha/log-{Date}.txt";
-}
+    public class DatabaseConfig
+    {
+        public string Provider { get; set; } = "MySQL";
+        public string Host { get; set; } = "localhost";
+        public int Port { get; set; } = 3306;
+        public string NomeBanco { get; set; } = string.Empty;
+        public string Usuario { get; set; } = string.Empty;
+        public string Senha { get; set; } = string.Empty;
+        public int ConnectionTimeout { get; set; } = 30;
+    }
 
-public class AgendamentoConfig
-{
-    public bool HabilitarScheduler { get; set; } = true;
-    public int IntervaloMinutos { get; set; } = 60;
-    public bool ExecutarAoIniciar { get; set; } = false;
-}
+    public class APIConfig
+    {
+        public bool HabilitarIntegracao { get; set; } = false;
+        public string BaseUrl { get; set; } = string.Empty;
+        public string ApiKey { get; set; } = string.Empty;
+        public int Timeout { get; set; } = 30000;
+        public int MaxRetries { get; set; } = 3;
+        public Dictionary<string, string> Endpoints { get; set; } = new();
+    }
 
-public class ExportacaoConfig
-{
-    public bool HabilitarExportacao { get; set; } = true;
-    public string FormatoPadrao { get; set; } = "Excel";
-    public string DiretorioSaida { get; set; } = "exports";
+    public class LoggingConfig
+    {
+        public string DiretorioLogs { get; set; } = "logs";
+        public string NivelMinimo { get; set; } = "Information";
+        public string ArquivoSucesso { get; set; } = "sucesso/log-{Date}.txt";
+        public string ArquivoFalha { get; set; } = "falha/log-{Date}.txt";
+    }
+
+    public class AgendamentoConfig
+    {
+        public bool HabilitarScheduler { get; set; } = true;
+        public int IntervaloMinutos { get; set; } = 60;
+        public bool ExecutarAoIniciar { get; set; } = false;
+    }
+
+    public class ExportacaoConfig
+    {
+        public bool HabilitarExportacao { get; set; } = true;
+        public string FormatoPadrao { get; set; } = "Excel";
+        public string DiretorioSaida { get; set; } = "exports";
+    }
 }

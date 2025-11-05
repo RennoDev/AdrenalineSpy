@@ -27,7 +27,7 @@ public static class Playwright
             // Criar instância do Playwright
             _playwright = await Microsoft.Playwright.Playwright.CreateAsync();
 
-            // Configurar opções do navegador
+            // Configurar opções do navegador baseado no Config
             var opcoes = new BrowserTypeLaunchOptions
             {
                 Headless = _config.Navegacao.HeadlessMode,
@@ -71,15 +71,20 @@ public static class Playwright
                 : _config.Navegacao.UserAgent
         });
 
-        // Aplicar bloqueios de recursos se configurado
+        // Log para confirmar UserAgent personalizado
+        if (!string.IsNullOrEmpty(_config.Navegacao.UserAgent))
+        {
+            LoggingTask.RegistrarDebug($"UserAgent personalizado aplicado: {_config.Navegacao.UserAgent[..50]}...");
+        }
+
+        // Aplicar bloqueios de recursos automaticamente
         await ConfigurarBloqueiosRecursos(context);
 
         var page = await context.NewPageAsync();
 
-        // Configurar timeout padrão para todas as operações da página
+        // Configurar timeout padrão para todas as operações
         page.SetDefaultTimeout(_config.Navegacao.TimeoutSegundos * 1000);
 
-        LoggingTask.RegistrarDebug("Nova página criada com configurações aplicadas");
         return page;
     }
 
@@ -132,21 +137,67 @@ public static class Playwright
     }
 
     /// <summary>
-    /// Aguardar elemento com timeout da configuração
+    /// Maximizar janela do navegador usando Windows API (Win + Up Arrow)
     /// </summary>
-    public static async Task AguardarElemento(IPage page, string seletor, int? timeoutPersonalizado = null)
+    public static async Task MaximizarJanela(IPage page)
     {
-        var timeout = timeoutPersonalizado ?? _config.Navegacao.TimeoutSegundos * 1000;
-
-        await page.WaitForSelectorAsync(seletor, new PageWaitForSelectorOptions
+        if (_config.Navegacao.HeadlessMode)
         {
-            Timeout = timeout,
-            State = WaitForSelectorState.Visible
-        });
+            LoggingTask.RegistrarInfo("⚠️ Não é possível maximizar janela em modo headless");
+            return;
+        }
+
+        if (!_config.Navegacao.JanelaMaximizada)
+        {
+            LoggingTask.RegistrarDebug("Maximização de janela desabilitada na configuração");
+            return;
+        }
+
+        try
+        {
+            // Aguardar um pouco para garantir que a janela foi criada e está ativa
+            await Task.Delay(800);
+
+            // Usar P/Invoke para enviar Win + Up Arrow (maximizar janela ativa)
+            LoggingTask.RegistrarInfo("🔲 Maximizando janela com Win + ↑");
+
+            // Importar funções Win32
+            const int VK_LWIN = 0x5B;      // Tecla Windows esquerda
+            const int VK_UP = 0x26;        // Seta para cima
+            const int KEYEVENTF_KEYUP = 0x02;
+
+            // Pressionar Win
+            keybd_event(VK_LWIN, 0, 0, 0);
+            await Task.Delay(50);
+
+            // Pressionar Up Arrow
+            keybd_event(VK_UP, 0, 0, 0);
+            await Task.Delay(50);
+
+            // Soltar Up Arrow
+            keybd_event(VK_UP, 0, KEYEVENTF_KEYUP, 0);
+            await Task.Delay(50);
+
+            // Soltar Win
+            keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0);
+
+            LoggingTask.RegistrarInfo("✅ Janela maximizada usando atalho do Windows");
+
+            // Aguardar para a janela se ajustar
+            await Task.Delay(500);
+        }
+        catch (Exception ex)
+        {
+            LoggingTask.RegistrarErro(ex, "Erro ao maximizar janela do navegador");
+        }
     }
 
+    // Importar função Windows API para simulação de teclas
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern void keybd_event(byte bVk, byte bScan, int dwFlags, int dwExtraInfo);
+
     /// <summary>
-    /// Finalizar e fechar todos os recursos do Playwright
+    /// Finalizar e liberar recursos do Playwright
     /// </summary>
     public static async Task Finalizar()
     {
@@ -168,51 +219,5 @@ public static class Playwright
         {
             LoggingTask.RegistrarErro(ex, "Playwright.Finalizar");
         }
-    }
-
-    /// <summary>
-    /// Capturar screenshot para debug com configuração automática
-    /// </summary>
-    public static async Task CapturarScreenshotDebug(IPage page, string nomeArquivo, bool paginaCompleta = true)
-    {
-        try
-        {
-            var timestamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
-            var path = $"debug_{timestamp}_{nomeArquivo}.png";
-
-            await page.ScreenshotAsync(new PageScreenshotOptions
-            {
-                Path = path,
-                FullPage = paginaCompleta
-            });
-
-            LoggingTask.RegistrarDebug($"Screenshot salvo: {path}");
-        }
-        catch (Exception ex)
-        {
-            LoggingTask.RegistrarErro(ex, "Playwright.CapturarScreenshotDebug");
-        }
-    }
-
-    /// <summary>
-    /// Obter configuração atual para debug
-    /// </summary>
-    public static object ObterConfiguracaoAtual()
-    {
-        return new
-        {
-            NavegadorAtivo = _browser != null,
-            PlaywrightAtivo = _playwright != null,
-            Configuracao = new
-            {
-                _config.Navegacao.NavegadorPadrao,
-                _config.Navegacao.HeadlessMode,
-                _config.Navegacao.TimeoutSegundos,
-                _config.Navegacao.ViewportWidth,
-                _config.Navegacao.ViewportHeight,
-                _config.Navegacao.BloquearImagens,
-                _config.Navegacao.BloquearCSS
-            }
-        };
     }
 }

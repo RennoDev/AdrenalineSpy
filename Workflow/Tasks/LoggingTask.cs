@@ -6,6 +6,7 @@ namespace AdrenalineSpy;
 public static class LoggingTask
 {
     private static bool _configurado = false;
+
     public static void ConfigurarLogger()
     {
         if (_configurado)

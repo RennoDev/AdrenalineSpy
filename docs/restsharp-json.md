@@ -145,7 +145,7 @@ public class Config
         return string.Format(endpoint, parametros);
     }
 }
-
+```
 ## Montar nas Tasks
 
 Crie a classe `ApiTask.cs` na pasta `Workflow/Tasks/`:
@@ -360,35 +360,37 @@ O **RestSharp + JSON** é usado principalmente para:
 
 ### Program.cs - Fase Inicial (Sem APIs Externas)
 ```csharp
-static void Main(string[] args)
+using AdrenalineSpy;
+
+namespace AdrenalineSpy
 {
-    // 1. JSON já é usado automaticamente aqui
-    Config config = Config.Instancia; // ← Carrega AutomationSettings.json
-    
-    if (!config.Validar())
+    class Program
     {
-        Console.WriteLine("❌ Configurações inválidas!");
-        return;
-    }
-    
-    LoggingTask.ConfigurarLogger();
-    
-    try
-    {
-        LoggingTask.RegistrarInfo("Aplicação iniciada");
-        
-        // Nesta fase, JSON é usado internamente pelo Config
-        // Não precisa de código REST ainda
-        
-        LoggingTask.RegistrarInfo("Aplicação finalizada");
-    }
-    catch (Exception ex)
-    {
-        LoggingTask.RegistrarErro(ex, "Program.Main");
-    }
-    finally
-    {
-        LoggingTask.FecharLogger();
+        static void Main(string[] args)
+        {
+
+            // Carregar configurações no início da aplicação
+            try
+            {
+                var config = Config.Instancia; // Carrega automaticamente o JSON
+
+                if (!config.Validar())
+                {
+                    Console.WriteLine("❌ Configuração inválida. Verifique AutomationSettings.json");
+                    return;
+                }
+
+                Console.WriteLine($"🎯 Scraping configurado para: {config.Navegacao.UrlBase}");
+                Console.WriteLine($"🗂️ Categorias: {string.Join(", ", config.Categorias.Keys)}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"💥 Erro fatal na configuração: {ex.Message}");
+                return;
+            }
+
+            // Executar workflow com configurações carregadas...
+        }
     }
 }
 ```
